@@ -1,0 +1,20 @@
+[package]
+name = "token-mint"
+version = "0.1.0"
+description = "Parameterizable token mint with vesting and algorithmic stablecoin burn/mint mechanism"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "token_mint"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.27.0"
+anchor-spl = "0.27.0"

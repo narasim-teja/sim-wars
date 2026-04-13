@@ -1,0 +1,42 @@
+# Anchor / Solana
+target/
+.anchor/
+test-ledger/
+**/*.rs.bk
+
+# Node / Bun
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# Sim engine
+sim-engine/sim-data.sqlite
+sim-engine/sim-data.sqlite-wal
+sim-engine/sim-data.sqlite-shm
+sim-engine/keys/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Keys (never commit private keys)
+*-keypair.json
+*.key
+deployer.json

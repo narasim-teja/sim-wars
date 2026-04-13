@@ -1,0 +1,16 @@
+[features]
+seeds = false
+
+[programs.devnet]
+token_mint = "11111111111111111111111111111111"
+amm_dex = "11111111111111111111111111111111"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "bun test"
