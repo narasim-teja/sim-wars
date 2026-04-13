@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx");
 
 #[program]
 pub mod amm_dex {

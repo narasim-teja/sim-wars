@@ -40,3 +40,5 @@ npm-debug.log*
 *-keypair.json
 *.key
 deployer.json
+
+.claude/

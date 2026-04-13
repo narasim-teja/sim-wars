@@ -1,15 +1,19 @@
+[toolchain]
+anchor_version = "0.30.1"
+
 [features]
-seeds = false
+resolution = true
+skip-lint = false
 
 [programs.devnet]
-token_mint = "11111111111111111111111111111111"
-amm_dex = "11111111111111111111111111111111"
+amm_dex = "Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx"
+token_mint = "8hFR2Zw5tmX9ysKBPwGkhF9VxaV7pj24TDu6im7jPBXj"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
