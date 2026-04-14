@@ -166,6 +166,14 @@ export class StateManager {
     this.totalSupply += amount;
   }
 
+  /**
+   * Overwrite pool reserves (used in chain mode to sync from on-chain after a swap).
+   */
+  setPoolReserves(reserveA: number, reserveB: number): void {
+    this.poolReserveA = reserveA;
+    this.poolReserveB = reserveB;
+  }
+
   getPrice(): number {
     if (this.poolReserveA === 0) return 0;
     return this.poolReserveB / this.poolReserveA;

@@ -14,8 +14,9 @@
  */
 import { Database } from "bun:sqlite";
 import type { SimulationState, AgentAction } from "../src/types";
+import { DEFAULT_DB_PATH } from "../src/db/database";
 
-const DB_PATH = "sim-data.sqlite";
+const DB_PATH = DEFAULT_DB_PATH;
 
 function usage(): never {
   console.error("Usage: bun run scenarios/verify-luna.ts <sim_id|--latest>");

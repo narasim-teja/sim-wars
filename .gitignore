@@ -11,11 +11,8 @@ out/
 dist/
 *.tsbuildinfo
 
-# Sim engine
-sim-engine/sim-data.sqlite
-sim-engine/sim-data.sqlite-wal
-sim-engine/sim-data.sqlite-shm
-sim-engine/keys/
+# Sim engine — all machine-local state lives here
+sim-engine/.local/
 
 # Environment
 .env

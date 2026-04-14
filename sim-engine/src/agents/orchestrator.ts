@@ -10,6 +10,7 @@ import { OllamaClient } from "../llm/ollama-client";
 import { buildAgentPrompt } from "../llm/prompt-builder";
 import { StateManager } from "../tick/state-manager";
 import { SimDatabase } from "../db/database";
+import type { ChainExecutor } from "../chain/action-executor";
 
 export class AgentOrchestrator {
   private agents: Map<string, AgentState> = new Map();
@@ -17,18 +18,21 @@ export class AgentOrchestrator {
   private stateManager: StateManager;
   private db: SimDatabase;
   private simId: string;
+  private chain: ChainExecutor | null;
 
   constructor(
     personas: AgentPersona[],
     llm: OllamaClient,
     stateManager: StateManager,
     db: SimDatabase,
-    simId: string
+    simId: string,
+    chain: ChainExecutor | null = null
   ) {
     this.llm = llm;
     this.stateManager = stateManager;
     this.db = db;
     this.simId = simId;
+    this.chain = chain;
 
     // Initialize agent states from personas.
     // A1: personas can specify `stakedFraction` to start with tokens already staked,
@@ -222,13 +226,29 @@ export class AgentOrchestrator {
         // Swap USDC → Token
         const usdcToSpend = decision.amount || 0;
         if (usdcToSpend > 0 && usdcToSpend <= agent.holdings.usdc) {
-          const tokensReceived = this.stateManager.executeSwap(usdcToSpend, false);
-          if (tokensReceived > 0) {
-            agent.holdings.usdc -= usdcToSpend;
-            agent.holdings.token += tokensReceived;
-            this.stateManager.recordTrade(agent.persona.id, "buy", usdcToSpend);
+          if (this.chain && this.chain.hasAgent(agent.persona.id)) {
+            try {
+              const result = await this.chain.swap(agent.persona.id, "buy", usdcToSpend);
+              const balances = await this.chain.getAgentBalances(agent.persona.id);
+              agent.holdings.token = balances.luna;
+              agent.holdings.usdc = balances.ust;
+              const { reserveLuna, reserveUst } = await this.chain.getPrice();
+              this.stateManager.setPoolReserves(reserveLuna, reserveUst);
+              this.stateManager.recordTrade(agent.persona.id, "buy", usdcToSpend);
+              return this.buildAction(agent, decision, sim, true, result.txSignature);
+            } catch (e) {
+              console.error(`  chain buy failed for ${agent.persona.id}:`, (e as Error).message);
+              success = false;
+            }
           } else {
-            success = false;
+            const tokensReceived = this.stateManager.executeSwap(usdcToSpend, false);
+            if (tokensReceived > 0) {
+              agent.holdings.usdc -= usdcToSpend;
+              agent.holdings.token += tokensReceived;
+              this.stateManager.recordTrade(agent.persona.id, "buy", usdcToSpend);
+            } else {
+              success = false;
+            }
           }
         } else {
           success = false;
@@ -240,13 +260,29 @@ export class AgentOrchestrator {
         // Swap Token → USDC
         const tokensToSell = decision.amount || 0;
         if (tokensToSell > 0 && tokensToSell <= agent.holdings.token) {
-          const usdcReceived = this.stateManager.executeSwap(tokensToSell, true);
-          if (usdcReceived > 0) {
-            agent.holdings.token -= tokensToSell;
-            agent.holdings.usdc += usdcReceived;
-            this.stateManager.recordTrade(agent.persona.id, "sell", tokensToSell);
+          if (this.chain && this.chain.hasAgent(agent.persona.id)) {
+            try {
+              const result = await this.chain.swap(agent.persona.id, "sell", tokensToSell);
+              const balances = await this.chain.getAgentBalances(agent.persona.id);
+              agent.holdings.token = balances.luna;
+              agent.holdings.usdc = balances.ust;
+              const { reserveLuna, reserveUst } = await this.chain.getPrice();
+              this.stateManager.setPoolReserves(reserveLuna, reserveUst);
+              this.stateManager.recordTrade(agent.persona.id, "sell", tokensToSell);
+              return this.buildAction(agent, decision, sim, true, result.txSignature);
+            } catch (e) {
+              console.error(`  chain sell failed for ${agent.persona.id}:`, (e as Error).message);
+              success = false;
+            }
           } else {
-            success = false;
+            const usdcReceived = this.stateManager.executeSwap(tokensToSell, true);
+            if (usdcReceived > 0) {
+              agent.holdings.token -= tokensToSell;
+              agent.holdings.usdc += usdcReceived;
+              this.stateManager.recordTrade(agent.persona.id, "sell", tokensToSell);
+            } else {
+              success = false;
+            }
           }
         } else {
           success = false;
@@ -293,6 +329,16 @@ export class AgentOrchestrator {
         break;
     }
 
+    return this.buildAction(agent, decision, sim, success, null);
+  }
+
+  private buildAction(
+    agent: AgentState,
+    decision: LLMResponse,
+    sim: SimulationState,
+    success: boolean,
+    txSignature: string | null,
+  ): AgentAction {
     return {
       tick: sim.tick,
       agentId: agent.persona.id,
@@ -300,7 +346,7 @@ export class AgentOrchestrator {
       amount: decision.amount,
       reasoning: decision.reasoning,
       threatAssessment: decision.threat_assessment,
-      txSignature: null, // Phase 1: in-memory simulation, no on-chain txs yet
+      txSignature,
       success,
       timestamp: Date.now(),
     };

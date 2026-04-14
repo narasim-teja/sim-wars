@@ -4,6 +4,7 @@ import { AgentOrchestrator } from "./agents/orchestrator";
 import { OllamaClient } from "./llm/ollama-client";
 import { SimDatabase } from "./db/database";
 import { LunaScenarioController } from "./scenarios/luna-controller";
+import { ChainExecutor } from "./chain/action-executor";
 import type { SimulationConfig, AgentPersona, TickConfig, SimulationState } from "./types";
 
 async function main() {
@@ -11,8 +12,11 @@ async function main() {
   console.log("║    TOKENOMICS WAR GAME — Simulation Engine  ║");
   console.log("╚══════════════════════════════════════════════╝\n");
 
-  // 1. Load scenario
-  const scenarioPath = process.argv[2] || "../scenarios/luna-ust.ts";
+  // 1. Parse args
+  const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith("--")));
+  const onChain = flags.has("--on-chain");
+  const scenarioPath = args[0] || "../scenarios/luna-ust.ts";
   console.log(`Loading scenario: ${scenarioPath}`);
 
   let config: SimulationConfig;
@@ -59,7 +63,19 @@ async function main() {
 
   // 4. Initialize components
   const stateManager = new StateManager(config);
-  const orchestrator = new AgentOrchestrator(agents, llm, stateManager, db, simId);
+
+  let chainExecutor: ChainExecutor | null = null;
+  if (onChain) {
+    console.log("⛓  On-chain mode: connecting to deployed AMM...");
+    chainExecutor = new ChainExecutor();
+    const { reserveLuna, reserveUst, price } = await chainExecutor.getPrice();
+    stateManager.setPoolReserves(reserveLuna, reserveUst);
+    console.log(
+      `   Pool reserves: ${reserveLuna.toLocaleString()} LUNA / ${reserveUst.toLocaleString()} UST  (price $${price.toFixed(4)})`,
+    );
+  }
+
+  const orchestrator = new AgentOrchestrator(agents, llm, stateManager, db, simId, chainExecutor);
 
   // 5. Initialize LUNA scenario controller (if stablecoin enabled)
   let lunaController: LunaScenarioController | null = null;
@@ -220,7 +236,7 @@ async function main() {
   }
   db.updateSimTicks(simId, results.length);
 
-  console.log(`\n  Simulation data saved to sim-data.sqlite (ID: ${simId})`);
+  console.log(`\n  Simulation data saved to sim-engine/.local/sim-data.sqlite (ID: ${simId})`);
   db.close();
 }
 

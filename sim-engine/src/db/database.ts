@@ -1,5 +1,12 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentAction, SimulationState, SimulationConfig } from "../types";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+export const LOCAL_DIR = join(__dirname, "../../.local");
+export const DEFAULT_DB_PATH = join(LOCAL_DIR, "sim-data.sqlite");
 
 export class SimDatabase {
   private db: Database;
@@ -9,7 +16,8 @@ export class SimDatabase {
   private insertTickStateStmt;
   private insertAgentStateStmt;
 
-  constructor(dbPath: string = "sim-data.sqlite") {
+  constructor(dbPath: string = DEFAULT_DB_PATH) {
+    mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = NORMAL");
