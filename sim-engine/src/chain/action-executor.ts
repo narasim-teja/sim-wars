@@ -124,10 +124,19 @@ export class ChainExecutor {
       })
       .signers([wallet.keypair]);
 
-    // Dry-run before broadcast — Anchor's simulate() throws on program error,
-    // surfacing constraint failures (mint mismatch, same-account, math overflow)
-    // before paying tx fees.
-    await builder.simulate();
+    // Dry-run before broadcast — surfaces constraint failures (mint mismatch,
+    // same-account, math overflow) before paying tx fees. Anchor 1.0's
+    // .simulate() doesn't auto-include builder-level .signers(), so we sign
+    // the transaction explicitly and use the connection's simulate.
+    const tx = await builder.transaction();
+    tx.feePayer = this.provider.wallet.publicKey;
+    tx.recentBlockhash = (await this.provider.connection.getLatestBlockhash()).blockhash;
+    tx.partialSign(wallet.keypair);
+    const signedTx = await this.provider.wallet.signTransaction(tx);
+    const sim = await this.provider.connection.simulateTransaction(signedTx);
+    if (sim.value.err) {
+      throw new Error(`swap simulate failed: ${JSON.stringify(sim.value.err)}\nlogs:\n${(sim.value.logs ?? []).join("\n")}`);
+    }
 
     const txSignature = await builder.rpc();
 
