@@ -16,7 +16,7 @@
  *   cd sim-engine && bun run ../scripts/deploy-programs.ts
  */
 import { Keypair, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
-import { BN } from "@coral-xyz/anchor";
+import { BN } from "@anchor-lang/core";
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,

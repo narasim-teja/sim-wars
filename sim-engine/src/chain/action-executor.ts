@@ -1,5 +1,5 @@
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { BN, AnchorProvider } from "@coral-xyz/anchor";
+import { BN, AnchorProvider } from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
 import {
   getAmmDexProgram,
@@ -111,7 +111,7 @@ export class ChainExecutor {
 
     const amountIn = this.toAtoms(amount);
 
-    const txSignature = await program.methods
+    const builder = program.methods
       .swap(amountIn, new BN(0), aToB)
       .accounts({
         swapper: wallet.keypair.publicKey,
@@ -122,8 +122,14 @@ export class ChainExecutor {
         swapperTokenIn,
         swapperTokenOut,
       })
-      .signers([wallet.keypair])
-      .rpc();
+      .signers([wallet.keypair]);
+
+    // Dry-run before broadcast — Anchor's simulate() throws on program error,
+    // surfacing constraint failures (mint mismatch, same-account, math overflow)
+    // before paying tx fees.
+    await builder.simulate();
+
+    const txSignature = await builder.rpc();
 
     // Read post-trade balances to compute realized output and new price
     const { price } = await this.getPrice();

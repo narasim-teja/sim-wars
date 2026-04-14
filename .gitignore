@@ -39,3 +39,5 @@ npm-debug.log*
 deployer.json
 
 .claude/
+.agents/
+skills-lock.json

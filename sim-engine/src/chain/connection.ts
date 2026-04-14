@@ -1,5 +1,5 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { AnchorProvider, Wallet } from "@coral-xyz/anchor";
+import { AnchorProvider, Wallet } from "@anchor-lang/core";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

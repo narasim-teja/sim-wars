@@ -32,6 +32,7 @@ pub mod amm_dex {
         pool.bump = ctx.bumps.pool;
         pool.vault_a_bump = ctx.bumps.token_a_vault;
         pool.vault_b_bump = ctx.bumps.token_b_vault;
+        pool.pool_authority_bump = ctx.bumps.pool_authority;
 
         msg!(
             "Pool initialized: {} / {} (fee: {} bps)",
@@ -75,7 +76,7 @@ pub mod amm_dex {
         // Transfer token A from provider to vault
         token::transfer(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: ctx.accounts.provider_token_a.to_account_info(),
                     to: ctx.accounts.token_a_vault.to_account_info(),
@@ -88,7 +89,7 @@ pub mod amm_dex {
         // Transfer token B from provider to vault
         token::transfer(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: ctx.accounts.provider_token_b.to_account_info(),
                     to: ctx.accounts.token_b_vault.to_account_info(),
@@ -98,14 +99,21 @@ pub mod amm_dex {
             amount_b,
         )?;
 
-        // Mint LP tokens to provider
+        // Mint LP tokens to provider — sign as pool_authority PDA
         let pool_key = pool.key();
-        let seeds = &[b"pool" as &[u8], pool_key.as_ref(), &[pool.bump]];
+        let seeds = &[
+            b"pool_authority" as &[u8],
+            pool_key.as_ref(),
+            &[pool.pool_authority_bump],
+        ];
         let signer_seeds = &[&seeds[..]];
+
+        let lp_tokens_to_mint_u64 =
+            u64::try_from(lp_tokens_to_mint).map_err(|_| AmmError::MathOverflow)?;
 
         token::mint_to(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 MintTo {
                     mint: ctx.accounts.lp_mint.to_account_info(),
                     to: ctx.accounts.provider_lp.to_account_info(),
@@ -113,12 +121,21 @@ pub mod amm_dex {
                 },
                 signer_seeds,
             ),
-            lp_tokens_to_mint as u64,
+            lp_tokens_to_mint_u64,
         )?;
 
-        pool.reserve_a += amount_a;
-        pool.reserve_b += amount_b;
-        pool.lp_supply += lp_tokens_to_mint as u64;
+        pool.reserve_a = pool
+            .reserve_a
+            .checked_add(amount_a)
+            .ok_or(AmmError::MathOverflow)?;
+        pool.reserve_b = pool
+            .reserve_b
+            .checked_add(amount_b)
+            .ok_or(AmmError::MathOverflow)?;
+        pool.lp_supply = pool
+            .lp_supply
+            .checked_add(lp_tokens_to_mint_u64)
+            .ok_or(AmmError::MathOverflow)?;
 
         msg!(
             "Added liquidity: {} A + {} B = {} LP",
@@ -150,7 +167,7 @@ pub mod amm_dex {
         // Burn LP tokens
         token::burn(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Burn {
                     mint: ctx.accounts.lp_mint.to_account_info(),
                     from: ctx.accounts.provider_lp.to_account_info(),
@@ -160,20 +177,18 @@ pub mod amm_dex {
             lp_amount,
         )?;
 
-        // Transfer tokens from vaults to provider
-        let token_a_mint = pool.token_a_mint;
-        let token_b_mint = pool.token_b_mint;
-        let seeds = &[
-            b"pool",
-            token_a_mint.as_ref(),
-            token_b_mint.as_ref(),
-            &[pool.bump],
+        // Sign as pool_authority PDA for vault transfers
+        let pool_key = pool.key();
+        let seeds: &[&[u8]] = &[
+            b"pool_authority",
+            pool_key.as_ref(),
+            &[pool.pool_authority_bump],
         ];
-        let signer_seeds = &[&seeds[..]];
+        let signer_seeds = &[seeds];
 
         token::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: ctx.accounts.token_a_vault.to_account_info(),
                     to: ctx.accounts.provider_token_a.to_account_info(),
@@ -186,7 +201,7 @@ pub mod amm_dex {
 
         token::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: ctx.accounts.token_b_vault.to_account_info(),
                     to: ctx.accounts.provider_token_b.to_account_info(),
@@ -197,9 +212,18 @@ pub mod amm_dex {
             amount_b,
         )?;
 
-        pool.reserve_a -= amount_a;
-        pool.reserve_b -= amount_b;
-        pool.lp_supply -= lp_amount;
+        pool.reserve_a = pool
+            .reserve_a
+            .checked_sub(amount_a)
+            .ok_or(AmmError::MathOverflow)?;
+        pool.reserve_b = pool
+            .reserve_b
+            .checked_sub(amount_b)
+            .ok_or(AmmError::MathOverflow)?;
+        pool.lp_supply = pool
+            .lp_supply
+            .checked_sub(lp_amount)
+            .ok_or(AmmError::MathOverflow)?;
 
         msg!(
             "Removed liquidity: {} LP = {} A + {} B",
@@ -224,6 +248,22 @@ pub mod amm_dex {
         require!(
             pool.reserve_a > 0 && pool.reserve_b > 0,
             AmmError::InsufficientLiquidity
+        );
+
+        let (expected_in_mint, expected_out_mint) = if a_to_b {
+            (pool.token_a_mint, pool.token_b_mint)
+        } else {
+            (pool.token_b_mint, pool.token_a_mint)
+        };
+        require_keys_eq!(
+            ctx.accounts.swapper_token_in.mint,
+            expected_in_mint,
+            AmmError::MintMismatch
+        );
+        require_keys_eq!(
+            ctx.accounts.swapper_token_out.mint,
+            expected_out_mint,
+            AmmError::MintMismatch
         );
 
         let (reserve_in, reserve_out) = if a_to_b {
@@ -260,7 +300,7 @@ pub mod amm_dex {
 
         token::transfer(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: from_account,
                     to: to_vault,
@@ -270,16 +310,14 @@ pub mod amm_dex {
             amount_in,
         )?;
 
-        // Transfer output tokens from vault to swapper
-        let token_a_mint = pool.token_a_mint;
-        let token_b_mint = pool.token_b_mint;
-        let seeds = &[
-            b"pool",
-            token_a_mint.as_ref(),
-            token_b_mint.as_ref(),
-            &[pool.bump],
+        // Transfer output tokens from vault to swapper — sign as pool_authority PDA
+        let pool_key = pool.key();
+        let seeds: &[&[u8]] = &[
+            b"pool_authority",
+            pool_key.as_ref(),
+            &[pool.pool_authority_bump],
         ];
-        let signer_seeds = &[&seeds[..]];
+        let signer_seeds = &[seeds];
 
         let (from_vault, to_account) = if a_to_b {
             (
@@ -295,7 +333,7 @@ pub mod amm_dex {
 
         token::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Transfer {
                     from: from_vault,
                     to: to_account,
@@ -308,14 +346,29 @@ pub mod amm_dex {
 
         // Update reserves
         if a_to_b {
-            pool.reserve_a += amount_in;
-            pool.reserve_b -= amount_out;
+            pool.reserve_a = pool
+                .reserve_a
+                .checked_add(amount_in)
+                .ok_or(AmmError::MathOverflow)?;
+            pool.reserve_b = pool
+                .reserve_b
+                .checked_sub(amount_out)
+                .ok_or(AmmError::MathOverflow)?;
         } else {
-            pool.reserve_b += amount_in;
-            pool.reserve_a -= amount_out;
+            pool.reserve_b = pool
+                .reserve_b
+                .checked_add(amount_in)
+                .ok_or(AmmError::MathOverflow)?;
+            pool.reserve_a = pool
+                .reserve_a
+                .checked_sub(amount_out)
+                .ok_or(AmmError::MathOverflow)?;
         }
 
-        pool.cumulative_volume += amount_in;
+        pool.cumulative_volume = pool
+            .cumulative_volume
+            .checked_add(amount_in)
+            .ok_or(AmmError::MathOverflow)?;
 
         msg!(
             "Swap: {} in → {} out ({})",
@@ -348,6 +401,7 @@ pub struct LiquidityPool {
     pub bump: u8,
     pub vault_a_bump: u8,
     pub vault_b_bump: u8,
+    pub pool_authority_bump: u8,
 }
 
 // ============================================================
@@ -431,22 +485,34 @@ pub struct AddLiquidity<'info> {
     pub pool_authority: UncheckedAccount<'info>,
 
     #[account(mut, address = pool.token_a_vault)]
-    pub token_a_vault: Account<'info, TokenAccount>,
+    pub token_a_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, address = pool.token_b_vault)]
-    pub token_b_vault: Account<'info, TokenAccount>,
+    pub token_b_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, address = pool.lp_mint)]
-    pub lp_mint: Account<'info, Mint>,
+    pub lp_mint: Box<Account<'info, Mint>>,
 
-    #[account(mut, constraint = provider_token_a.owner == provider.key())]
-    pub provider_token_a: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_token_a.owner == provider.key(),
+        constraint = provider_token_a.mint == pool.token_a_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_token_a: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, constraint = provider_token_b.owner == provider.key())]
-    pub provider_token_b: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_token_b.owner == provider.key(),
+        constraint = provider_token_b.mint == pool.token_b_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_token_b: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, constraint = provider_lp.owner == provider.key())]
-    pub provider_lp: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_lp.owner == provider.key(),
+        constraint = provider_lp.mint == pool.lp_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_lp: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -471,22 +537,34 @@ pub struct RemoveLiquidity<'info> {
     pub pool_authority: UncheckedAccount<'info>,
 
     #[account(mut, address = pool.token_a_vault)]
-    pub token_a_vault: Account<'info, TokenAccount>,
+    pub token_a_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, address = pool.token_b_vault)]
-    pub token_b_vault: Account<'info, TokenAccount>,
+    pub token_b_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, address = pool.lp_mint)]
-    pub lp_mint: Account<'info, Mint>,
+    pub lp_mint: Box<Account<'info, Mint>>,
 
-    #[account(mut, constraint = provider_token_a.owner == provider.key())]
-    pub provider_token_a: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_token_a.owner == provider.key(),
+        constraint = provider_token_a.mint == pool.token_a_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_token_a: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, constraint = provider_token_b.owner == provider.key())]
-    pub provider_token_b: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_token_b.owner == provider.key(),
+        constraint = provider_token_b.mint == pool.token_b_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_token_b: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, constraint = provider_lp.owner == provider.key())]
-    pub provider_lp: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = provider_lp.owner == provider.key(),
+        constraint = provider_lp.mint == pool.lp_mint @ AmmError::MintMismatch,
+    )]
+    pub provider_lp: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -517,12 +595,16 @@ pub struct Swap<'info> {
     pub token_b_vault: Account<'info, TokenAccount>,
 
     /// The swapper's input token account
-    #[account(mut, constraint = swapper_token_in.owner == swapper.key())]
-    pub swapper_token_in: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = swapper_token_in.owner == swapper.key(),
+        constraint = swapper_token_in.key() != swapper_token_out.key() @ AmmError::SameTokenAccount,
+    )]
+    pub swapper_token_in: Box<Account<'info, TokenAccount>>,
 
     /// The swapper's output token account
     #[account(mut, constraint = swapper_token_out.owner == swapper.key())]
-    pub swapper_token_out: Account<'info, TokenAccount>,
+    pub swapper_token_out: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -561,4 +643,10 @@ pub enum AmmError {
     InsufficientLiquidity,
     #[msg("Slippage tolerance exceeded")]
     SlippageExceeded,
+    #[msg("Token account mint does not match pool mint")]
+    MintMismatch,
+    #[msg("Swap input and output token accounts must differ")]
+    SameTokenAccount,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
 }

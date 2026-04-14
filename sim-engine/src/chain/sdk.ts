@@ -1,4 +1,4 @@
-import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, Idl } from "@anchor-lang/core";
 import { PublicKey } from "@solana/web3.js";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -16,7 +16,7 @@ function loadIdl(name: string): Idl {
   const path = join(IDL_DIR, `${name}.json`);
   if (!existsSync(path)) {
     throw new Error(
-      `IDL not found at ${path}. Run: RUSTFLAGS='--cfg procmacro2_semver_exempt' anchor build`,
+      `IDL not found at ${path}. Run: anchor build`,
     );
   }
   const idl = JSON.parse(readFileSync(path, "utf8")) as Idl;

@@ -84,8 +84,12 @@ pub mod token_mint {
         let alloc = &mut ctx.accounts.allocation;
         let config = &mut ctx.accounts.config;
 
+        let new_distributed = alloc
+            .distributed
+            .checked_add(amount)
+            .ok_or(TokenError::MathOverflow)?;
         require!(
-            alloc.distributed + amount <= alloc.allocated,
+            new_distributed <= alloc.allocated,
             TokenError::AllocationExceeded
         );
 
@@ -101,7 +105,7 @@ pub mod token_mint {
 
             token::mint_to(
                 CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
+                    ctx.accounts.token_program.key(),
                     MintTo {
                         mint: ctx.accounts.mint.to_account_info(),
                         to: ctx.accounts.recipient_ata.to_account_info(),
@@ -114,8 +118,11 @@ pub mod token_mint {
         }
         // For vested allocations, a separate create_vesting instruction handles VestingAccount creation
 
-        alloc.distributed += amount;
-        config.minted_so_far += amount;
+        alloc.distributed = new_distributed;
+        config.minted_so_far = config
+            .minted_so_far
+            .checked_add(amount)
+            .ok_or(TokenError::MathOverflow)?;
 
         msg!("Distributed {} tokens", amount);
         Ok(())
@@ -133,8 +140,12 @@ pub mod token_mint {
             alloc.vesting_ticks > 0,
             TokenError::NotVestedAllocation
         );
+        let new_distributed = alloc
+            .distributed
+            .checked_add(total_amount)
+            .ok_or(TokenError::MathOverflow)?;
         require!(
-            alloc.distributed + total_amount <= alloc.allocated,
+            new_distributed <= alloc.allocated,
             TokenError::AllocationExceeded
         );
 
@@ -149,7 +160,7 @@ pub mod token_mint {
         vesting.vesting_ticks = alloc.vesting_ticks;
         vesting.bump = ctx.bumps.vesting;
 
-        alloc.distributed += total_amount;
+        alloc.distributed = new_distributed;
 
         msg!(
             "Vesting created for {}: {} tokens over {} ticks",
@@ -196,7 +207,7 @@ pub mod token_mint {
 
         token::mint_to(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 MintTo {
                     mint: ctx.accounts.mint.to_account_info(),
                     to: ctx.accounts.beneficiary_ata.to_account_info(),
@@ -207,7 +218,10 @@ pub mod token_mint {
             claimable,
         )?;
 
-        vesting.claimed_amount += claimable;
+        vesting.claimed_amount = vesting
+            .claimed_amount
+            .checked_add(claimable)
+            .ok_or(TokenError::MathOverflow)?;
 
         msg!("Claimed {} vested tokens at tick {}", claimable, current_tick);
         Ok(())
@@ -217,6 +231,9 @@ pub mod token_mint {
     /// This is the algorithmic stablecoin mechanism that creates the death spiral.
     /// burn_amount: amount of stablecoin to burn
     /// price_numerator/price_denominator: current token price as a fraction (to avoid floats)
+    ///
+    /// PRIVILEGED: caller must be `config.authority`. Price is trusted-input from an
+    /// off-chain feed; do not expose this instruction without an oracle PDA.
     pub fn mint_from_burn(
         ctx: Context<MintFromBurn>,
         burn_amount: u64,
@@ -230,7 +247,7 @@ pub mod token_mint {
         // Burn the stablecoin tokens
         token::burn(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Burn {
                     mint: ctx.accounts.stablecoin_mint.to_account_info(),
                     from: ctx.accounts.burner_stablecoin_ata.to_account_info(),
@@ -243,8 +260,13 @@ pub mod token_mint {
         // Calculate tokens to mint: burn_amount / current_price
         // If price is $85: 1_000_000 UST burn / 85 = 11,764 LUNA minted
         // If price is $1:  1_000_000 UST burn / 1  = 1,000,000 LUNA minted (hyperinflation!)
+        let tokens_to_mint_u128 = (burn_amount as u128)
+            .checked_mul(price_denominator as u128)
+            .ok_or(TokenError::MathOverflow)?
+            .checked_div(price_numerator as u128)
+            .ok_or(TokenError::MathOverflow)?;
         let tokens_to_mint =
-            (burn_amount as u128 * price_denominator as u128 / price_numerator as u128) as u64;
+            u64::try_from(tokens_to_mint_u128).map_err(|_| TokenError::MathOverflow)?;
 
         // Mint new tokens to the burner
         let mint_key = config.mint;
@@ -257,7 +279,7 @@ pub mod token_mint {
 
         token::mint_to(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 MintTo {
                     mint: ctx.accounts.token_mint.to_account_info(),
                     to: ctx.accounts.burner_token_ata.to_account_info(),
@@ -268,7 +290,10 @@ pub mod token_mint {
             tokens_to_mint,
         )?;
 
-        config.minted_so_far += tokens_to_mint;
+        config.minted_so_far = config
+            .minted_so_far
+            .checked_add(tokens_to_mint)
+            .ok_or(TokenError::MathOverflow)?;
 
         msg!(
             "Burned {} stablecoin, minted {} tokens (price: {}/{})",
@@ -505,13 +530,19 @@ pub struct ClaimVested<'info> {
 
 #[derive(Accounts)]
 pub struct MintFromBurn<'info> {
+    /// Token holder whose stablecoin is burned and who receives the minted tokens.
     #[account(mut)]
     pub burner: Signer<'info>,
+
+    /// Privileged signer — must match `config.authority`. Gates price-input access.
+    pub authority: Signer<'info>,
 
     #[account(
         mut,
         seeds = [b"config", config.mint.as_ref()],
         bump = config.bump,
+        has_one = authority @ TokenError::Unauthorized,
+        constraint = config.mint == token_mint.key() @ TokenError::MintMismatch,
     )]
     pub config: Account<'info, TokenomicsConfig>,
 
@@ -532,14 +563,16 @@ pub struct MintFromBurn<'info> {
     /// Burner's stablecoin token account (tokens will be burned from here)
     #[account(
         mut,
-        constraint = burner_stablecoin_ata.owner == burner.key(),
+        constraint = burner_stablecoin_ata.owner == burner.key() @ TokenError::Unauthorized,
+        constraint = burner_stablecoin_ata.mint == stablecoin_mint.key() @ TokenError::MintMismatch,
     )]
     pub burner_stablecoin_ata: Account<'info, TokenAccount>,
 
     /// Burner's main token account (newly minted tokens go here)
     #[account(
         mut,
-        constraint = burner_token_ata.owner == burner.key(),
+        constraint = burner_token_ata.owner == burner.key() @ TokenError::Unauthorized,
+        constraint = burner_token_ata.mint == token_mint.key() @ TokenError::MintMismatch,
     )]
     pub burner_token_ata: Account<'info, TokenAccount>,
 
@@ -578,4 +611,8 @@ pub enum TokenError {
     NothingToClaim,
     #[msg("Invalid price")]
     InvalidPrice,
+    #[msg("Token account mint does not match expected mint")]
+    MintMismatch,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
 }
