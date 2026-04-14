@@ -58,7 +58,7 @@ export interface AgentPersona {
   name: string;
   systemPrompt: string;
   riskTolerance: number; // 0-1
-  initialCapital: { token: number; usdc: number };
+  initialCapital: { token: number; usdc: number; stakedFraction?: number };
   goals: string[];
 }
 
@@ -129,6 +129,11 @@ export interface SimulationState {
   stablecoinSupply?: number;
   reserveBalance?: number;
   pegPrice?: number;
+  initialReserveBalance?: number;
+  reserveDrainedThisTick?: number;
+  yieldPaidThisTick?: number;
+  borrowerRevenueThisTick?: number;
+  rewardsPaidThisTick?: number;
 }
 
 export interface Proposal {

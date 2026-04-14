@@ -36,7 +36,7 @@ export class OllamaClient {
         stream: false,
         format: "json",
         options: {
-          temperature: 0.7,
+          temperature: 0.3,
           num_predict: 512,
           top_p: 0.9,
         },

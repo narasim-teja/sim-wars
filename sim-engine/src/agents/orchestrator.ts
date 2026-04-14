@@ -30,20 +30,49 @@ export class AgentOrchestrator {
     this.db = db;
     this.simId = simId;
 
-    // Initialize agent states from personas
+    // Initialize agent states from personas.
+    // A1: personas can specify `stakedFraction` to start with tokens already staked,
+    // which kickstarts the LUNA reserve drain (Anchor Protocol reality at peak).
     for (const persona of personas) {
+      const totalTokens = persona.initialCapital.token;
+      const frac = Math.max(0, Math.min(1, persona.initialCapital.stakedFraction ?? 0));
+      const staked = Math.floor(totalTokens * frac);
+      const liquid = totalTokens - staked;
+
       this.agents.set(persona.id, {
         persona,
         walletAddress: persona.id, // Simplified for Phase 1
         holdings: {
-          token: persona.initialCapital.token,
-          staked: 0,
+          token: liquid,
+          staked,
           usdc: persona.initialCapital.usdc,
         },
         memory: [],
         observedActions: [],
       });
+
+      if (staked > 0) {
+        this.stateManager.stake(persona.id, staked);
+      }
     }
+  }
+
+  /**
+   * Apply per-tick staking rewards computed by the StateManager.
+   * Reward tokens accrue to each agent's staked balance.
+   * Returns total rewards paid (for prompt surfacing).
+   */
+  applyStakingRewards(rewards: Map<string, number>): number {
+    let total = 0;
+    for (const [agentId, reward] of rewards) {
+      if (reward <= 0) continue;
+      const agent = this.agents.get(agentId);
+      if (!agent) continue;
+      agent.holdings.staked += reward;
+      this.stateManager.stake(agentId, reward);
+      total += reward;
+    }
+    return total;
   }
 
   /**

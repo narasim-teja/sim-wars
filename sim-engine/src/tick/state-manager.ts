@@ -134,7 +134,9 @@ export class StateManager {
    */
   computeStakingRewards(): Map<string, number> {
     const rewards = new Map<string, number>();
-    const ticksPerYear = 365 * 24 * 180; // ~180 ticks/hour at 20s intervals
+    // A3: treat each tick as ~1 day so the 19.45% APY compresses the death-spiral
+    // timeline into ~30-50 ticks (Phase 1 design target), not months.
+    const ticksPerYear = 365;
     const rewardRate = this.stakingAPY / 100 / ticksPerYear;
 
     for (const [agentId, staked] of this.stakingBalances) {

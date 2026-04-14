@@ -88,9 +88,14 @@ async function main() {
     console.log(`  TICK ${tickNum}`);
     console.log(`${"─".repeat(60)}`);
 
+    // A2: distribute staking rewards BEFORE reading state so agents see the balance growth.
+    const rewards = stateManager.computeStakingRewards();
+    const rewardsPaid = orchestrator.applyStakingRewards(rewards);
+
     // Read current state
     const agentBalances = orchestrator.getAgentBalances();
     const state = await stateManager.readState(tickNum, agentBalances);
+    state.rewardsPaidThisTick = rewardsPaid;
 
     // Apply LUNA-specific mechanics
     if (lunaController) {
@@ -100,13 +105,20 @@ async function main() {
       state.stablecoinSupply = lunaResult.ustSupply;
       state.reserveBalance = lunaResult.reserveBalance;
       state.pegPrice = lunaResult.pegPrice;
+      state.initialReserveBalance = lunaResult.initialReserve;
+      state.reserveDrainedThisTick = lunaResult.reserveDrainedThisTick;
+      state.yieldPaidThisTick = lunaResult.yieldPaid;
+      state.borrowerRevenueThisTick = lunaResult.borrowerRevenue;
 
-      // Apply hyperinflation (mint new tokens from burn)
+      // Apply hyperinflation (mint new tokens from burn) AND dump them into the AMM
+      // to fulfill UST redemptions — this is what actually broke LUNA's price.
+      // Minted tokens are immediately sold for USDC, driving the AMM price down.
       if (lunaResult.lunaMinted > 0) {
         stateManager.inflateSupply(lunaResult.lunaMinted);
         state.totalSupply += lunaResult.lunaMinted;
+        const usdcFromDump = stateManager.executeSwap(lunaResult.lunaMinted, true);
         console.log(
-          `  ⚠ LUNA MINTED: ${lunaResult.lunaMinted.toLocaleString()} tokens (hyperinflation)`
+          `  ⚠ LUNA MINTED + DUMPED: ${lunaResult.lunaMinted.toLocaleString()} tokens → $${Math.round(usdcFromDump).toLocaleString()} USDC (hyperinflation)`
         );
       }
 

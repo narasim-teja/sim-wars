@@ -2,11 +2,15 @@ import type { SimulationConfig, SimulationState } from "../types";
 
 export interface LunaTickResult {
   reserveBalance: number;
+  initialReserve: number;
   ustSupply: number;
   pegPrice: number;
   yieldSustainable: boolean;
   reserveWarning: boolean;
   lunaMinted: number;
+  yieldPaid: number;
+  borrowerRevenue: number;
+  reserveDrainedThisTick: number;
 }
 
 /**
@@ -29,7 +33,9 @@ export class LunaScenarioController {
     this.reserveBalance = config.stablecoin?.reserveAmount ?? 3_000_000_000;
     this.initialReserve = this.reserveBalance;
     this.ustSupply = config.amm.initialLiquidity * config.amm.initialPrice;
-    this.ticksPerYear = 365 * 24 * 180; // ~180 ticks/hour at 20s intervals
+    // A3: compressed timeline — each tick ≈ 1 day — so yield and reserve drain
+    // are visible within the 50-tick Phase 1 sim window.
+    this.ticksPerYear = 365;
     this.yieldPerTick = config.staking.baseAPY / 100 / this.ticksPerYear;
   }
 
@@ -72,11 +78,15 @@ export class LunaScenarioController {
 
     return {
       reserveBalance: this.reserveBalance,
+      initialReserve: this.initialReserve,
       ustSupply: this.ustSupply,
       pegPrice,
       yieldSustainable: this.reserveBalance > 0,
       reserveWarning: this.reserveBalance < this.initialReserve * 0.3,
       lunaMinted,
+      yieldPaid,
+      borrowerRevenue,
+      reserveDrainedThisTick: netDrain,
     };
   }
 

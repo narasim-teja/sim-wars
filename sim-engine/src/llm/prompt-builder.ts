@@ -37,12 +37,38 @@ export function buildAgentPrompt(
       .join(", ") || "quiet";
 
   // Stablecoin-specific info (for LUNA backtest)
-  const stablecoinSection =
-    sim.stablecoinSupply !== undefined
-      ? `
-- Stablecoin supply: ${sim.stablecoinSupply?.toLocaleString()} (peg: $${sim.pegPrice?.toFixed(4)})
-- Reserve balance: $${sim.reserveBalance?.toLocaleString()}`
-      : "";
+  let stablecoinSection = "";
+  if (sim.stablecoinSupply !== undefined && sim.reserveBalance !== undefined) {
+    const initialReserve = sim.initialReserveBalance ?? sim.reserveBalance;
+    const drainedPct = initialReserve > 0
+      ? ((1 - sim.reserveBalance / initialReserve) * 100)
+      : 0;
+    const drainThisTick = sim.reserveDrainedThisTick ?? 0;
+    const drainPctThisTick = initialReserve > 0
+      ? ((drainThisTick / initialReserve) * 100)
+      : 0;
+    const ticksToZero = drainThisTick > 0
+      ? Math.floor(sim.reserveBalance / drainThisTick)
+      : Infinity;
+    const yieldPaid = sim.yieldPaidThisTick ?? 0;
+    const borrowerRev = sim.borrowerRevenueThisTick ?? 0;
+    const subsidyRatio = borrowerRev > 0 ? (yieldPaid / borrowerRev) : Infinity;
+    const pegAlarm = (sim.pegPrice ?? 1) < 0.995 ? " ⚠ PEG BREAKING" : "";
+    const depleteAlarm = drainedPct > 10 ? " ⚠ RESERVE BLEEDING" : "";
+    const subsidyAlarm = isFinite(subsidyRatio) && subsidyRatio > 3 ? " ⚠ YIELD UNSUSTAINABLE" : "";
+
+    stablecoinSection = `
+- Stablecoin supply: ${sim.stablecoinSupply.toLocaleString()} (peg: $${(sim.pegPrice ?? 1).toFixed(4)}${pegAlarm})
+- Reserve balance: $${Math.round(sim.reserveBalance).toLocaleString()} of $${Math.round(initialReserve).toLocaleString()} initial
+- Reserve depleted: ${drainedPct.toFixed(2)}% since start${depleteAlarm}
+- Reserve drained this tick: $${Math.round(drainThisTick).toLocaleString()} (${drainPctThisTick.toFixed(3)}% of initial)
+- Projected depletion: ${isFinite(ticksToZero) ? ticksToZero + " ticks at current rate" : "stable"}
+- Yield paid this tick: $${Math.round(yieldPaid).toLocaleString()} vs borrower revenue $${Math.round(borrowerRev).toLocaleString()} (subsidy ratio: ${isFinite(subsidyRatio) ? subsidyRatio.toFixed(1) + "x" : "∞"}${subsidyAlarm})`;
+  }
+
+  const rewardsLine = sim.rewardsPaidThisTick && sim.rewardsPaidThisTick > 0
+    ? `\n- Staking rewards paid this tick: ${sim.rewardsPaidThisTick.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens`
+    : "";
 
   return `You are ${agent.persona.name} in a live token economy simulation on Solana devnet.
 
@@ -55,7 +81,7 @@ CURRENT MARKET STATE (Tick ${sim.tick}):
 - Your holdings: ${agent.holdings.token.toLocaleString()} tokens, ${agent.holdings.staked.toLocaleString()} staked, $${agent.holdings.usdc.toLocaleString()} USDC
 - Staking APY: ${sim.stakingAPY.toFixed(2)}%${stakingWarning}
 - Total staked: ${((sim.stakedSupply / sim.totalSupply) * 100).toFixed(1)}% of supply
-- Wealth concentration (Gini): ${sim.giniCoefficient.toFixed(3)}${giniWarning}${stablecoinSection}
+- Wealth concentration (Gini): ${sim.giniCoefficient.toFixed(3)}${giniWarning}${stablecoinSection}${rewardsLine}
 - Recent large trades: ${recentTrades}
 
 YOUR RECENT ACTIONS: ${myActions}
@@ -65,6 +91,12 @@ CONSTRAINTS:
 - You can only sell/unstake what you hold
 - Maximum buy limited by your USDC balance
 - Token balance: ${agent.holdings.token.toLocaleString()}, USDC balance: $${agent.holdings.usdc.toLocaleString()}
+
+DECISION GUIDANCE:
+- Your persona's NUMERIC DECISION TRIGGERS are not optional — if any trigger condition is met above, ACT this tick.
+- "hold" is the default only when NO trigger fires. Do not hold just because prior ticks held.
+- When acting, set "amount" to a real positive number (tokens or USDC units), NOT null.
+- If you decide to sell/unstake based on reserve or peg, say so explicitly in "reasoning" (e.g. "reserve down 12%, unstaking").
 
 Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
 {
