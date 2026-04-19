@@ -14,6 +14,8 @@ use std::path::PathBuf;
 
 pub const TOKEN_MINT_PROGRAM_ID: &str = "8hFR2Zw5tmX9ysKBPwGkhF9VxaV7pj24TDu6im7jPBXj";
 pub const AMM_DEX_PROGRAM_ID: &str = "Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx";
+pub const STAKING_PROGRAM_ID: &str = "2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY";
+pub const GOVERNANCE_PROGRAM_ID: &str = "Hk4eHkcr5njyntu4WEQuafVKkaK4LQJ8dTH5fqAArHFD";
 
 pub fn deploy_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -36,6 +38,16 @@ pub fn setup_svm() -> LiteSVM {
         dep.join("amm_dex.so"),
     )
     .expect("load amm_dex.so");
+    svm.add_program_from_file(
+        STAKING_PROGRAM_ID.parse::<Pubkey>().unwrap(),
+        dep.join("staking.so"),
+    )
+    .expect("load staking.so");
+    svm.add_program_from_file(
+        GOVERNANCE_PROGRAM_ID.parse::<Pubkey>().unwrap(),
+        dep.join("governance.so"),
+    )
+    .expect("load governance.so");
     svm
 }
 
@@ -77,6 +89,8 @@ pub fn send_ix(
 ) -> Result<(), litesvm::types::FailedTransactionMetadata> {
     let mut signers: Vec<&Keypair> = vec![payer];
     signers.extend(extra_signers.iter().copied());
+    // Fresh blockhash per tx so byte-identical retries get distinct signatures.
+    svm.expire_blockhash();
     let blockhash = svm.latest_blockhash();
     let tx = Transaction::new_signed_with_payer(
         &[ix],

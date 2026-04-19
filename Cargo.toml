@@ -2,6 +2,8 @@
 members = [
     "programs/token-mint",
     "programs/amm-dex",
+    "programs/staking",
+    "programs/governance",
     "program-tests",
 ]
 resolver = "2"

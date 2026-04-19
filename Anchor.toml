@@ -8,10 +8,14 @@ skip-lint = false
 [programs.localnet]
 amm_dex = "Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx"
 token_mint = "8hFR2Zw5tmX9ysKBPwGkhF9VxaV7pj24TDu6im7jPBXj"
+staking = "2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY"
+governance = "Hk4eHkcr5njyntu4WEQuafVKkaK4LQJ8dTH5fqAArHFD"
 
 [programs.devnet]
 amm_dex = "Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx"
 token_mint = "8hFR2Zw5tmX9ysKBPwGkhF9VxaV7pj24TDu6im7jPBXj"
+staking = "2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY"
+governance = "Hk4eHkcr5njyntu4WEQuafVKkaK4LQJ8dTH5fqAArHFD"
 
 [provider]
 cluster = "Localnet"

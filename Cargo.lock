@@ -1371,6 +1371,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "governance"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "staking",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2002,12 +2011,14 @@ version = "0.1.0"
 dependencies = [
  "amm-dex",
  "anchor-lang",
+ "governance",
  "litesvm",
  "litesvm-token",
  "solana-program",
  "solana-sdk",
  "spl-associated-token-account",
  "spl-token",
+ "staking",
  "token-mint",
 ]
 
@@ -4291,6 +4302,14 @@ dependencies = [
  "solana-zero-copy",
  "spl-discriminator",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "staking"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
 ]
 
 [[package]]

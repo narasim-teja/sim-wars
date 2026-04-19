@@ -1,5 +1,17 @@
 # Anchor 0.30.1 → 1.0.0 Migration Plan
 
+> **Status: COMPLETE (2026-04-14)** — all migration steps executed and verified. Retained as a historical record; do not re-run.
+>
+> Verified current state (2026-04-19):
+> - `Anchor.toml` → `anchor_version = "1.0.0"`, `[registry]` removed, program IDs pinned for localnet + devnet.
+> - `programs/{token-mint,amm-dex}/Cargo.toml` → `anchor-lang = "1.0.0"`, `anchor-spl = "1.0.0"`.
+> - All 12 `CpiContext::new[_with_signer]` call sites use `ctx.accounts.token_program.key()` (4 in token-mint, 8 in amm-dex).
+> - `sim-engine/package.json` → `@anchor-lang/core: ^1.0.0`; every import in `sim-engine/src/chain/` and `sim-engine/scripts/` uses the new package name.
+> - `target/idl/{token_mint,amm_dex}.json` and `target/types/*.ts` regenerate cleanly.
+> - Workspace has no `[patch.crates-io]` block.
+> - Build command: `anchor build --ignore-keys` (see `anchor_build_workaround` memory for the `--ignore-keys` rationale).
+> - `program-tests/` LiteSVM suite is the real Rust test harness that this migration unlocked.
+
 ## Why
 
 Anchor 0.30.1 ships against Solana 1.18.x and old proc-macro2/zeroize. This machine has Solana CLI 3.1.13 + Rust 1.94, and we want LiteSVM tests (which need modern deps). Every workaround so far (`--no-idl`, proc-macro2 patch) is a band-aid; the patches now collide with newer cargo. Migrating to Anchor 1.0 (released 2026-04-02, matches our installed AVM) removes all of them at once and unlocks the real Rust test harness we deferred.
@@ -72,7 +84,7 @@ The mint/auth constraints in `MintFromBurn`, `AddLiquidity`, `RemoveLiquidity`, 
 With Anchor 1.0 + solana-program 3.0, `litesvm 0.11` + `anchor-litesvm 0.4` (which needs Anchor 1.0) work without dep conflicts. Re-create [program-tests/](program-tests/) and the suite per [.claude/plans/fuzzy-napping-cloud.md §5](.claude/plans/fuzzy-napping-cloud.md).
 
 ### 9. Update memory
-Edit `~/.claude/projects/-Users-narasim-Code-work-sim-wars/memory/anchor_build_workaround.md` — the workaround is no longer needed; either delete the memory or rewrite it as "historical, fixed by 1.0 migration on 2026-04-14."
+Edit `~/.claude/projects/-Users-narasim-Code-work-sim-wars/memory/anchor_build_workaround.md` — the workaround is no longer needed; either delete the memory or rewrite it as "historical, fixed by 1.0 migration on 2026-04-14." ✅ Done — memory now documents the Anchor 1.0 build flow (uses `anchor build --ignore-keys`).
 
 ## Verification
 

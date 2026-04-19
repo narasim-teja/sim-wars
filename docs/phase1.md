@@ -1,221 +1,117 @@
 # Phase 1 — Detailed Implementation Guide
 
-## Session Status (as of 2026-04-13)
+## Session Status (as of 2026-04-19)
+
+> **Phase 1 complete.** Days 1-7 shipped. Ready for Phase 2 (full roster + frontend).
 
 ### What's Done
 
-**Toolchain upgraded:**
-- Rust: 1.94.1 (from 1.85.1)
-- Solana CLI: 2.1.21 Agave (from 1.15.2)
-- AVM: 1.0.0, Anchor CLI: 1.0.0 installed + set as current
-- Bun: 1.3.9 (works, optional upgrade to 1.3.12+)
+**Toolchain:**
+- Rust 1.94.1, Solana CLI 2.1.21 Agave, AVM 1.0.0, Anchor CLI 1.0.0, Bun 1.3.9.
+- Anchor 0.30.1 → 1.0.0 migration complete (2026-04-14). See [anchor-1.0-migration.md](anchor-1.0-migration.md).
+- Canonical build command: `anchor build --ignore-keys`.
 
-**Project bootstrapped — all source files created:**
+**On-chain programs (Days 1-2, 6-7):**
+- [programs/token-mint/src/lib.rs](../programs/token-mint/src/lib.rs) — `init_mint`, `configure`, `distribute`, vesting, `mint_from_burn`. Mint/auth + `checked_*` hardening intact.
+- [programs/amm-dex/src/lib.rs](../programs/amm-dex/src/lib.rs) — `init_pool`, `add_liquidity`, `remove_liquidity`, `swap` (constant product), fee + slippage guards.
+- [programs/staking/src/lib.rs](../programs/staking/src/lib.rs) — `initialize_pool`, `initialize_stake_account`, `stake`, `request_unstake`, `complete_unstake`, `claim_rewards`, `fund_reward_vault`, admin `set_tick`. Tick-denominated linear APY accrual, configurable lock + cooldown.
+- [programs/governance/src/lib.rs](../programs/governance/src/lib.rs) — `initialize_governance`, `create_proposal`, `cast_vote`, `finalize_proposal`, `execute_proposal`, admin `set_tick`. Stake-weighted voting sourced from `staking::StakeAccount`; VoteReceipt PDA prevents double-voting; timelock gates execution.
+- All four `Cargo.toml` at `anchor-lang/anchor-spl = "1.0.0"`. Governance depends on `staking` with `features = ["cpi"]` to read `StakeAccount`.
+- `declare_id!` + `Anchor.toml` pinned (same ID for localnet + devnet):
+  - `token_mint = 8hFR2Zw5tmX9ysKBPwGkhF9VxaV7pj24TDu6im7jPBXj`
+  - `amm_dex = Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx`
+  - `staking = 2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY`
+  - `governance = Hk4eHkcr5njyntu4WEQuafVKkaK4LQJ8dTH5fqAArHFD`
+- Build artifacts present: `target/deploy/{token_mint,amm_dex,staking,governance}.so`, `target/idl/*.json`, `target/types/*.ts`.
 
-```
-sol/
-├── Anchor.toml                          ✅ Created (needs program ID update after build)
-├── Cargo.toml                           ✅ Workspace config
-├── programs/
-│   ├── token-mint/
-│   │   ├── Cargo.toml                   ⚠️  Uses anchor-lang 0.27.0 — MUST UPDATE (see below)
-│   │   └── src/lib.rs                   ✅ Full program: init_mint, configure, distribute, vesting, mint_from_burn
-│   └── amm-dex/
-│       ├── Cargo.toml                   ⚠️  Uses anchor-lang 0.27.0 — MUST UPDATE
-│       └── src/lib.rs                   ✅ Full program: init_pool, add/remove liquidity, swap (x*y=k)
-├── sim-engine/
-│   ├── package.json                     ✅ Deps installed (@coral-xyz/anchor, @solana/web3.js, spl-token)
-│   ├── tsconfig.json                    ✅
-│   ├── bun.lock                         ✅
-│   ├── src/
-│   │   ├── types.ts                     ✅ All interfaces (SimulationConfig, AgentState, etc.)
-│   │   ├── index.ts                     ✅ Main entry point — wires tick loop, agents, LUNA controller
-│   │   ├── tick/
-│   │   │   ├── tick-controller.ts       ✅ EventEmitter-based sequential tick loop
-│   │   │   └── state-manager.ts         ✅ In-memory AMM, Gini calc, staking sim
-│   │   ├── agents/
-│   │   │   ├── orchestrator.ts          ✅ Batch LLM calls, validate actions, execute trades
-│   │   │   └── personas.ts             ✅ 3 LUNA personas + 5 extended personas
-│   │   ├── llm/
-│   │   │   ├── ollama-client.ts         ✅ Ollama HTTP client, JSON parsing with fallbacks
-│   │   │   └── prompt-builder.ts        ✅ Per-agent prompt template
-│   │   ├── db/
-│   │   │   └── database.ts             ✅ SQLite schema (simulations, tick_states, agent_actions)
-│   │   └── scenarios/
-│   │       └── luna-controller.ts       ✅ Reserve depletion, peg pressure, mint/burn hyperinflation
-│   └── scenarios/
-│       └── luna-ust.ts                  ✅ LUNA config (1B supply, 19.45% APY, $85 price)
-├── .gitignore                           ✅
-└── .git/                                ✅ Initialized, files staged (no commit yet)
-```
+**Rust LiteSVM test harness (unlocked by the 1.0 migration):**
+- [program-tests/Cargo.toml](../program-tests/Cargo.toml) — `litesvm 0.11`, `litesvm-token 0.11`, `solana-sdk/program 3.0`, `spl-token 9.0`, `anchor-lang 1.0.0`, + path deps on all four programs.
+- [program-tests/tests/token_mint.rs](../program-tests/tests/token_mint.rs), [amm_dex.rs](../program-tests/tests/amm_dex.rs), [staking.rs](../program-tests/tests/staking.rs), [governance.rs](../program-tests/tests/governance.rs), [common/mod.rs](../program-tests/tests/common/mod.rs).
+- Loads all four `.so` files via `add_program_from_file` with canonical program IDs.
+- **Current status: 19/19 tests passing** (3 token_mint + 4 amm_dex + 6 staking + 6 governance). Staking covers APY accrual, lock period, cooldown, authority gating, monotonic tick, empty-vault cap. Governance covers happy-path proposal lifecycle, threshold rejection, double-vote rejection via VoteReceipt init, finalize-before-expiry, quorum-unmet failure, late-vote rejection.
 
-**NOT created yet:**
-- `scripts/deploy-programs.ts`
-- `scripts/fund-agents.ts`
-- `tests/token-mint.ts`
-- `tests/amm-dex.ts`
-- `sim-engine/scenarios/verify-luna.ts`
-- `programs/staking/` and `programs/governance/` (Days 6-7)
-- `frontend/` (Phase 2)
+**Sim engine (Days 3-4):**
+- [sim-engine/package.json](../sim-engine/package.json) — `@anchor-lang/core ^1.0.0`, `@solana/web3.js ^1.98.0`, `@solana/spl-token ^0.4.12`.
+- [src/index.ts](../sim-engine/src/index.ts) wires tick loop, LUNA controller, orchestrator, chain executor.
+- [src/tick/tick-controller.ts](../sim-engine/src/tick/tick-controller.ts), [src/tick/state-manager.ts](../sim-engine/src/tick/state-manager.ts) — tick engine + in-memory AMM / Gini / staking.
+- [src/agents/orchestrator.ts](../sim-engine/src/agents/orchestrator.ts) — batch LLM calls, validation, now routes trades to `ChainExecutor` (on-chain) while stake/unstake stay in-memory for Phase 1.
+- [src/agents/personas.ts](../sim-engine/src/agents/personas.ts) — `LUNA_PERSONAS` (3), `EXTENDED_PERSONAS` (5), and `ALL_PHASE1_PERSONAS` (8). Extended personas now carry numeric decision triggers + `stakedFraction` so the 8-agent LUNA scenario has realistic initial staking.
+- [src/llm/ollama-client.ts](../sim-engine/src/llm/ollama-client.ts), [src/llm/prompt-builder.ts](../sim-engine/src/llm/prompt-builder.ts) — Ollama HTTP + JSON parsing with fallbacks + per-agent prompts.
+- [src/db/database.ts](../sim-engine/src/db/database.ts) — SQLite (`simulations`, `tick_states`, `agent_actions`).
+- [src/scenarios/luna-controller.ts](../sim-engine/src/scenarios/luna-controller.ts) — reserve drain, peg pressure, mint/burn hyperinflation.
+- [scenarios/luna-ust.ts](../sim-engine/scenarios/luna-ust.ts) — LUNA/UST config (1B supply, 19.45% APY, $85). Now activates all 8 agents via `ALL_PHASE1_PERSONAS`.
+
+**On-chain wiring (Step 7, done):**
+- [src/chain/connection.ts](../sim-engine/src/chain/connection.ts) — `AnchorProvider`/`Wallet` setup.
+- [src/chain/sdk.ts](../sim-engine/src/chain/sdk.ts) — `Program<Idl>` wrappers for token-mint + amm-dex.
+- [src/chain/action-executor.ts](../sim-engine/src/chain/action-executor.ts) — signs + submits actual txs; enhanced simulation (commit `5ebcce3`).
+
+**Deployment scripts (Step 6, done):**
+- [sim-engine/scripts/deploy-programs.ts](../sim-engine/scripts/deploy-programs.ts) — init mint, mock USDC, init pool with initial liquidity.
+- [sim-engine/scripts/fund-agents.ts](../sim-engine/scripts/fund-agents.ts) — keypairs, SOL airdrop, ATAs, per-persona distribution.
+
+**Day 5 LUNA backtest:**
+- [sim-engine/scenarios/verify-luna.ts](../sim-engine/scenarios/verify-luna.ts) — 5-criteria backtest verifier.
+
+### What's left in Phase 1
+
+All Phase 1 milestones shipped. Remaining items are Phase 2 scope or intentional Phase 1 deferrals:
+
+**Phase 2 (next):**
+- Sim-engine wiring of on-chain staking + governance: extend [src/chain/sdk.ts](../sim-engine/src/chain/sdk.ts) and [src/chain/action-executor.ts](../sim-engine/src/chain/action-executor.ts) to call `staking.stake/unstake/claim_rewards` and `governance.create_proposal/cast_vote`. Replace in-memory `StateManager.stake/unstake` with on-chain calls. Handle the `vote_yes`/`vote_no`/`propose` action types in the orchestrator's `executeAction` switch (they currently fall through to hold).
+- Full 20-agent roster (12 more personas).
+- Frontend (`frontend/`).
+
+**Intentional Phase 1 deferrals:**
+- TypeScript mirror tests (`tests/token-mint.ts`, `tests/amm-dex.ts`) — the Rust LiteSVM suite in [program-tests/](../program-tests/) covers this role.
+- `execute_proposal` has no on-chain side effect yet — it sets the status flag only; Phase 2 sim-engine reads the flag and reshapes state (e.g., parameter change, treasury redirect).
 
 ---
 
-## Remaining Steps — Pick Up Here
+## How to run what's built
 
-### Step 1: Fix Anchor Version Mismatch (CRITICAL — do this first)
-
-The Cargo.toml files reference `anchor-lang = "0.27.0"` but the installed CLI is now **1.0.0**.
-You have two options:
-
-**Option A: Use Anchor 0.30.1 (recommended, more stable)**
+**In-memory sim (fastest feedback loop — no chain needed):**
 ```bash
-avm install 0.30.1
-avm use 0.30.1
-```
-Then update both program Cargo.toml files:
-```toml
-# programs/token-mint/Cargo.toml AND programs/amm-dex/Cargo.toml
-[dependencies]
-anchor-lang = "0.30.1"
-anchor-spl = "0.30.1"
-
-[features]
-# ...keep existing features...
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
-```
-And update Anchor.toml:
-```toml
-[toolchain]
-anchor_version = "0.30.1"
-```
-
-**Option B: Use Anchor 1.0.0 (latest, may have API changes)**
-```bash
-avm use 1.0.0  # already installed
-```
-Then update Cargo.toml files to `anchor-lang = "1.0.0"` / `anchor-spl = "1.0.0"`.
-Note: Anchor 1.0.0 renamed `declare_id!` to `declare_program!` and has other breaking changes — the lib.rs files may need syntax updates.
-
-### Step 2: Build Anchor Programs
-
-```bash
-cd /path/to/sol
-
-# Clean any stale build artifacts
-rm -rf target/
-
-# Build
-anchor build
-
-# If successful, get the generated program IDs:
-solana address -k target/deploy/token_mint-keypair.json
-solana address -k target/deploy/amm_dex-keypair.json
-
-# Update Anchor.toml [programs.devnet] with these IDs
-# Update declare_id!() in each lib.rs with the matching ID
-# Rebuild:
-anchor build
-```
-
-### Step 3: Configure Solana Devnet Wallet
-
-```bash
-# Generate a deployer keypair (if not already done)
-solana-keygen new --outfile ~/.config/solana/id.json --no-bip39-passphrase
-
-# Set devnet
-solana config set --url devnet
-
-# Fund it
-solana airdrop 5
-# If rate-limited, try: solana airdrop 2 && sleep 10 && solana airdrop 2
-```
-
-### Step 4: Run the Simulation Engine (no Anchor needed!)
-
-The sim-engine uses an **in-memory AMM simulation** for Phase 1 — it doesn't need deployed programs. You can run it right now with just Ollama:
-
-```bash
-# Terminal 1: Start Ollama
+# Terminal 1
 ollama serve
-
-# Terminal 2: Pull model (if not already)
+# Terminal 2 (first time only)
 ollama pull qwen3:8b
+# Terminal 3
+cd sim-engine && bun run src/index.ts ../scenarios/luna-ust.ts
+```
 
-# Terminal 3: Run simulation
+**On-chain sim against localnet:**
+```bash
+# Terminal 1
+solana-test-validator
+# Terminal 2
+anchor deploy
 cd sim-engine
+bun run scripts/deploy-programs.ts
+bun run scripts/fund-agents.ts
 bun run src/index.ts ../scenarios/luna-ust.ts
 ```
 
-This will:
-- Load the LUNA/UST scenario (1B supply, 19.45% APY, $85 price)
-- Connect to Ollama (Qwen3-8B)
-- Run 50 ticks with 3 agents (Whale, Yield Farmer, Retail Degen)
-- Each tick: read state → build prompts → get LLM decisions → execute in-memory trades → persist to SQLite
-- Display agent reasoning, price changes, reserve depletion, death spiral detection
-- Save everything to `sim-data.sqlite`
-
-**Expected output:** Death spiral in ~30-50 ticks (price $85 → <$1)
-
-### Step 5: Deploy Programs to Devnet (after Step 2)
-
+**LUNA backtest verification:**
 ```bash
-# Deploy both programs
-anchor deploy
+cd sim-engine && bun run scenarios/verify-luna.ts <simulation-id>
+```
+Checks: (1) price < $1 (from $85), (2) staking ratio < 10%, (3) reasoning mentions "unsustainable"/"reserve", (4) total supply inflated, (5) cascade pattern farmer → whale → degen.
 
-# Or deploy individually:
-anchor deploy --program-name token_mint
-anchor deploy --program-name amm_dex
+**Rust program tests:**
+```bash
+anchor build --ignore-keys
+cargo test -p program-tests
 ```
 
-### Step 6: Create Deployment Scripts
+---
 
-**`scripts/deploy-programs.ts`** — Automates:
-1. Initialize token mint with LUNA params
-2. Create a mock USDC/UST mint
-3. Initialize AMM pool with initial liquidity ($85 price)
-4. Log all addresses
+## Days 6-7 implementation notes
 
-**`scripts/fund-agents.ts`** — Automates:
-1. Generate agent keypairs (save to `sim-engine/keys/`)
-2. Airdrop SOL to each agent wallet
-3. Create ATAs for both tokens
-4. Distribute initial token holdings per persona config
-
-### Step 7: Wire Sim Engine to On-Chain (replaces in-memory AMM)
-
-Update `sim-engine/src/chain/` with:
-- `connection.ts` — Solana provider setup using Helius RPC
-- `sdk.ts` — TypeScript wrappers for Token Mint + AMM program instructions (using generated IDL)
-- `action-executor.ts` — Signs and submits actual Solana transactions
-
-Modify `orchestrator.ts` to use `action-executor.ts` instead of `state-manager.ts` for trade execution.
-
-### Step 8: LUNA Backtest Verification
-
-Create `sim-engine/scenarios/verify-luna.ts`:
-```bash
-bun run scenarios/verify-luna.ts <simulation-id>
-```
-Checks 5 criteria:
-1. Price drops below $1 (from $85)
-2. Staking ratio drops below 10%
-3. Agent reasoning mentions "unsustainable" / "reserve"
-4. Total supply increased (hyperinflation)
-5. Clear cascade pattern: farmer → whale → degen
-
-### Step 9: Staking + Governance Programs (Days 6-7)
-
-Create `programs/staking/` and `programs/governance/` with the structs defined in [plan.md](plan.md#on-chain-architecture-anchor-programs).
-
-Expand agent roster from 3 → 8 using the `EXTENDED_PERSONAS` already defined in `sim-engine/src/agents/personas.ts`.
-
-### Step 10: First Commit
-
-```bash
-git add -A
-git commit -m "Phase 1: Bootstrap project — Anchor programs, sim engine, LUNA backtest"
-```
+1. **Staking program** — tick-denominated linear APY accrual: `rewards = amount × base_apy_bps × ticks_elapsed / (10_000 × ticks_per_year)`. Two-step unstake (request → cooldown → complete) so the on-chain timing matches the in-memory scenario model. `set_tick` is authority-gated and monotonic — the sim engine advances it once per tick. `fund_reward_vault` lets the authority seed rewards up front (phase 1 treats the reward source as an admin-funded pool; inflationary minting is deferred).
+2. **Governance program** — `Governance` is bound to one `staking_pool`. Voting weight is read directly from `staking::StakeAccount` (governance depends on `staking` with `features = ["cpi"]`). `cast_vote` inits a `VoteReceipt` PDA keyed by `(proposal, voter)` — replay/double-vote rejection is automatic. Lifecycle: `create → cast_vote × N → set_tick past expiry → finalize → set_tick past timelock → execute`.
+3. **Agent roster** — [scenarios/luna-ust.ts](../sim-engine/scenarios/luna-ust.ts) now imports `ALL_PHASE1_PERSONAS` (8 agents: 3 LUNA + 5 extended). Each extended persona was augmented with numeric decision triggers and a `stakedFraction` so they contribute to the initial staked-supply number.
+4. **Deferred sim-engine wiring** — the staking/governance programs compile + are tested on-chain, but the sim engine still uses `StateManager.stake/unstake` in-memory. Hooking the orchestrator into `staking::stake/unstake` is Phase 2 work; the chain layer already has the `Program<Idl>` wrapper pattern via [src/chain/sdk.ts](../sim-engine/src/chain/sdk.ts).
 
 ---
 
@@ -257,7 +153,7 @@ TickController.start()
         → buildAgentPrompt()          # inject market state + persona + constraints
         → OllamaClient.generateBatch() # parallel LLM calls
         → validateAction()            # clamp amounts, check balances
-        → executeAction()             # swap on in-memory AMM (Phase 1)
+        → ChainExecutor.execute()     # sign + submit swap tx against deployed AMM
         → SimDatabase.insertAction()  # persist to SQLite
     → TickController.markTickComplete()
 ```
@@ -272,10 +168,15 @@ TickController.start()
 | `sim-engine/src/scenarios/luna-controller.ts` | LUNA reserve drain, peg pressure, hyperinflation logic |
 | `sim-engine/scenarios/luna-ust.ts` | LUNA/UST config: 19.45% APY, $85 price, 3B reserve |
 | `sim-engine/src/agents/personas.ts` | 3 LUNA personas + 5 extended (for 8-agent mode) |
+| `sim-engine/src/chain/{connection,sdk,action-executor}.ts` | Anchor provider, Program<Idl> wrappers, on-chain tx submission |
+| `sim-engine/scripts/{deploy-programs,fund-agents}.ts` | Bootstrap mint/pool/liquidity and per-persona agent funding |
+| `sim-engine/scenarios/verify-luna.ts` | 5-criteria LUNA backtest verifier |
 | `programs/token-mint/src/lib.rs` | Anchor: mint, vesting, mint-from-burn (death spiral) |
 | `programs/amm-dex/src/lib.rs` | Anchor: constant product AMM, swap, liquidity |
+| `program-tests/tests/{token_mint,amm_dex}.rs` | LiteSVM Rust test harness (happy + negative paths) |
 
 ### Important Notes
 - **Never `bun build`** the sim-engine — Bun's bundler breaks `@solana/web3.js`. Always use `bun run src/index.ts` (direct execution).
-- The sim-engine's `@coral-xyz/anchor` dependency is `0.30.1` in package.json — update this to match whichever Anchor version you build with.
-- The in-memory simulation (StateManager) and the on-chain programs are separate paths. Phase 1 uses in-memory; wiring to on-chain is Step 7 above.
+- TS Anchor package is `@anchor-lang/core ^1.0.0` (the old `@coral-xyz/anchor` was replaced in the 1.0 migration).
+- Trades now execute on-chain via `ChainExecutor`. Stake/unstake remain in-memory (StateManager) until the Day 6-7 staking program ships.
+- Build programs with `anchor build --ignore-keys` (Anchor 1.0 spurious transient-keypair check). LiteSVM tests load `.so` by canonical program ID, so the mismatch doesn't affect them.

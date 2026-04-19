@@ -1,0 +1,26 @@
+[package]
+name = "governance"
+version = "0.1.0"
+description = "Stake-weighted governance: propose, vote, finalize, execute. Voting power sourced from the staking program."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "governance"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = [
+    "anchor-lang/idl-build",
+    "anchor-spl/idl-build",
+    "staking/idl-build",
+]
+
+[dependencies]
+anchor-lang = "1.0.0"
+anchor-spl = "1.0.0"
+staking = { path = "../staking", features = ["cpi"] }

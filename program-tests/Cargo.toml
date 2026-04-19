@@ -17,3 +17,5 @@ spl-associated-token-account = "8.0"
 anchor-lang = "1.0.0"
 token-mint = { path = "../programs/token-mint", features = ["no-entrypoint"] }
 amm-dex = { path = "../programs/amm-dex", features = ["no-entrypoint"] }
+staking = { path = "../programs/staking", features = ["no-entrypoint"] }
+governance = { path = "../programs/governance", features = ["no-entrypoint"] }

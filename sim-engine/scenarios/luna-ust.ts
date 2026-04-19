@@ -1,5 +1,5 @@
 import type { SimulationConfig, AgentPersona, TickConfig } from "../src/types";
-import { LUNA_PERSONAS } from "../src/agents/personas";
+import { ALL_PHASE1_PERSONAS } from "../src/agents/personas";
 
 export const config: SimulationConfig = {
   token: {
@@ -37,7 +37,7 @@ export const config: SimulationConfig = {
   },
 };
 
-export const agents: AgentPersona[] = LUNA_PERSONAS;
+export const agents: AgentPersona[] = ALL_PHASE1_PERSONAS;
 
 export const tickConfig: TickConfig = {
   intervalMs: 5_000, // 5s per tick for faster dev iteration
