@@ -53,12 +53,19 @@ export function buildAgentPrompt(
     const yieldPaid = sim.yieldPaidThisTick ?? 0;
     const borrowerRev = sim.borrowerRevenueThisTick ?? 0;
     const subsidyRatio = borrowerRev > 0 ? (yieldPaid / borrowerRev) : Infinity;
-    const pegAlarm = (sim.pegPrice ?? 1) < 0.995 ? " ⚠ PEG BREAKING" : "";
+    const peg = sim.pegPrice ?? 1;
+    // Graduated peg state — agents should reason about degree, not just break/not.
+    let pegState = "STABLE at $1.00 target";
+    if (peg < 0.80) pegState = "COLLAPSED — stablecoin hyperdepegged, irrecoverable";
+    else if (peg < 0.95) pegState = "SEVERE DEPEG — stablecoin losing anchor";
+    else if (peg < 0.99) pegState = "BREAKING — peg below 0.99, early death-spiral signal";
+    else if (peg < 0.995) pegState = "WOBBLING — small deviation, watch closely";
     const depleteAlarm = drainedPct > 10 ? " ⚠ RESERVE BLEEDING" : "";
     const subsidyAlarm = isFinite(subsidyRatio) && subsidyRatio > 3 ? " ⚠ YIELD UNSUSTAINABLE" : "";
 
     stablecoinSection = `
-- Stablecoin supply: ${sim.stablecoinSupply.toLocaleString()} (peg: $${(sim.pegPrice ?? 1).toFixed(4)}${pegAlarm})
+- STABLECOIN PEG: $${peg.toFixed(4)} (target $1.0000) — ${pegState}
+- Stablecoin supply: ${sim.stablecoinSupply.toLocaleString()}
 - Reserve balance: $${Math.round(sim.reserveBalance).toLocaleString()} of $${Math.round(initialReserve).toLocaleString()} initial
 - Reserve depleted: ${drainedPct.toFixed(2)}% since start${depleteAlarm}
 - Reserve drained this tick: $${Math.round(drainThisTick).toLocaleString()} (${drainPctThisTick.toFixed(3)}% of initial)

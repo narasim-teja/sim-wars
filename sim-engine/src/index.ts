@@ -94,7 +94,28 @@ async function main() {
 
   // Track death spiral detection
   let deathSpiralDetected = false;
+  let lastCompletedTick = 0;
+  let shutdownRequested = false;
   const initialPrice = config.amm.initialPrice;
+
+  // Graceful shutdown: flush DB + mark status before exit so partial runs are verifiable.
+  const gracefulShutdown = (signal: string) => {
+    if (shutdownRequested) return;
+    shutdownRequested = true;
+    console.log(`\n  Received ${signal} — finalizing DB and exiting…`);
+    try {
+      const status = deathSpiralDetected ? "death_spiral" : "interrupted";
+      db.updateSimStatus(simId, status);
+      db.updateSimTicks(simId, lastCompletedTick);
+      db.close();
+      console.log(`  Saved ${lastCompletedTick + 1} ticks to DB (status=${status}, simId=${simId})`);
+    } catch (e) {
+      console.error("  DB close error:", e);
+    }
+    process.exit(0);
+  };
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
   // 7. Wire up tick pipeline
   tick.on("tick:start", async ({ tick: tickNum }) => {
@@ -136,17 +157,22 @@ async function main() {
         console.log(
           `  ⚠ LUNA MINTED + DUMPED: ${lunaResult.lunaMinted.toLocaleString()} tokens → $${Math.round(usdcFromDump).toLocaleString()} USDC (hyperinflation)`
         );
+        // Re-sync state snapshot with post-dump AMM reality so downstream prints
+        // and agent prompts see the price that actually exists now.
+        state.tokenPrice = stateManager.getPrice();
+        state.priceHistory = [...state.priceHistory.slice(0, -1), state.tokenPrice];
       }
 
       // Status indicators
-      const reservePct = (
+      const reservePct =
         (lunaResult.reserveBalance / (config.stablecoin?.reserveAmount ?? 1)) *
-        100
-      ).toFixed(1);
+        100;
+      const pegAlarm = lunaResult.pegPrice < 0.995 ? " ⚠ PEG BREAK" : "";
 
       console.log(
-        `  Reserve: $${lunaResult.reserveBalance.toLocaleString()} (${reservePct}%) | ` +
-        `UST Peg: $${lunaResult.pegPrice.toFixed(4)} | ` +
+        `  Reserve: $${lunaResult.reserveBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+        `(${reservePct.toFixed(3)}%) | ` +
+        `UST Peg: $${lunaResult.pegPrice.toFixed(4)}${pegAlarm} | ` +
         `Yield sustainable: ${lunaResult.yieldSustainable ? "YES" : "NO"}`
       );
 
@@ -155,12 +181,12 @@ async function main() {
       }
     }
 
-    // Print market state
+    // Print market state (after LUNA controller so price/supply reflect this tick's mint+dump)
     console.log(
       `  Price: $${state.tokenPrice.toFixed(4)} | ` +
       `Gini: ${state.giniCoefficient.toFixed(3)} | ` +
-      `Staked: ${((state.stakedSupply / state.totalSupply) * 100).toFixed(1)}% | ` +
-      `Supply: ${state.totalSupply.toLocaleString()}`
+      `Staked: ${((state.stakedSupply / state.totalSupply) * 100).toFixed(2)}% | ` +
+      `Supply: ${state.totalSupply.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
     );
 
     // Process agents
@@ -193,6 +219,7 @@ async function main() {
 
     // Persist tick state
     db.insertTickState(simId, tickNum, state, elapsed);
+    lastCompletedTick = tickNum;
 
     console.log(`\n  Tick ${tickNum} completed in ${elapsed}ms`);
 

@@ -99,7 +99,7 @@ export class SimDatabase {
 
   updateSimStatus(
     simId: string,
-    status: "running" | "completed" | "failed" | "death_spiral"
+    status: "running" | "completed" | "failed" | "death_spiral" | "interrupted"
   ): void {
     this.db.run(
       "UPDATE simulations SET status = ?, completed_at = ? WHERE id = ?",

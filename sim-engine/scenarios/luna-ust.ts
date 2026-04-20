@@ -41,7 +41,7 @@ export const agents: AgentPersona[] = ALL_PHASE1_PERSONAS;
 
 export const tickConfig: TickConfig = {
   intervalMs: 5_000, // 5s per tick for faster dev iteration
-  maxTicks: 50,
+  maxTicks: 12,
 };
 
 export default { config, agents, tickConfig };
