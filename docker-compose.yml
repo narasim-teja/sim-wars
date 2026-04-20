@@ -1,0 +1,47 @@
+# sim-wars — one-shot local stack.
+#
+# Profiles:
+#   default         — just the sim-engine API + WS (uses OpenRouter via env)
+#   --profile ollama  — also starts a local Ollama; set LLM_PROVIDER=ollama
+#
+# Frontend lives at frontend/ and is added here in Phase 3.
+
+services:
+  sim-engine:
+    build:
+      context: ./sim-engine
+      dockerfile: Dockerfile
+    image: sim-wars/sim-engine:dev
+    container_name: sim-wars-engine
+    ports:
+      - "8787:8787"
+    environment:
+      # LLM selection — one of: ollama | openrouter | mock
+      LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
+      LLM_MODEL: ${LLM_MODEL:-qwen/qwen3-8b}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      # Optional "boost" fallback model for fast/cheap personas
+      LLM_BOOST_PROVIDER: ${LLM_BOOST_PROVIDER:-}
+      LLM_BOOST_MODEL: ${LLM_BOOST_MODEL:-}
+      LLM_BOOST_BASE_URL: ${LLM_BOOST_BASE_URL:-}
+      LLM_BOOST_API_KEY: ${LLM_BOOST_API_KEY:-}
+      PORT: "8787"
+    volumes:
+      - sim-runs:/app/.local/runs
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    container_name: sim-wars-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  sim-runs:
+  ollama-models:

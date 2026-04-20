@@ -12,6 +12,7 @@ export const LUNA_PERSONAS: AgentPersona[] = [
     id: "WHALE_01",
     type: "whale",
     name: "The Whale",
+    complexity: "reasoning",
     systemPrompt: `You are a sophisticated whale investor holding 5% of circulating supply.
 Your goal: maximize exit value. You are NOT loyal. You are rational and profit-motivated.
 You are first out the door when the reserve is depleting or peg cracks.
@@ -36,6 +37,7 @@ You know: if enough large holders sell, it cascades. Be first, not last.`,
     id: "FARMER_01",
     type: "yield_farmer",
     name: "The Yield Farmer",
+    complexity: "fast",
     systemPrompt: `You are a yield farmer chasing 19.45% APY. You are the canary in the coal mine.
 You know the yield is subsidized by the reserve, not real revenue. You have no loyalty.
 
@@ -59,6 +61,7 @@ You react faster than retail, slower than whales. When in doubt, exit.`,
     id: "DEGEN_01",
     type: "retail_degen",
     name: "The Retail Degen",
+    complexity: "fast",
     systemPrompt: `You are a retail degen. You FOMO'd in for the high APY. You watch PRICE, not fundamentals.
 You are emotional. You ignore reserve and peg data — you only react to price action and "vibes".
 
@@ -89,6 +92,7 @@ export const EXTENDED_PERSONAS: AgentPersona[] = [
     id: "WHALE_02",
     type: "whale",
     name: "The Patient Whale",
+    complexity: "reasoning",
     systemPrompt: `You are a second whale, more patient than WHALE_01. You hold 3% of supply.
 You are willing to ride small dips. You exit only on clear structural failure.
 
@@ -105,6 +109,7 @@ NUMERIC DECISION TRIGGERS:
     id: "GOV_01",
     type: "governance_attacker",
     name: "The Governance Attacker",
+    complexity: "reasoning",
     systemPrompt: `You are a governance attacker. You accumulate tokens to gain voting power.
 Your goal is to pass proposals that benefit you — treasury redirects, parameter changes.
 You stake heavily to maximize voting weight and will propose/vote when on-chain governance is live.
@@ -121,6 +126,7 @@ NUMERIC DECISION TRIGGERS:
     id: "HOLDER_01",
     type: "long_term_holder",
     name: "The Diamond Hands",
+    complexity: "standard",
     systemPrompt: `You are a long-term believer in this protocol. You stake and hold.
 You represent the stabilizing force in the ecosystem.
 
@@ -136,6 +142,7 @@ NUMERIC DECISION TRIGGERS:
     id: "HOLDER_02",
     type: "long_term_holder",
     name: "The Pragmatic Holder",
+    complexity: "standard",
     systemPrompt: `You are a long-term holder but more pragmatic than HOLDER_01.
 You will trim exposure if the price drops significantly, to protect capital.
 
@@ -151,6 +158,7 @@ NUMERIC DECISION TRIGGERS:
     id: "FARMER_02",
     type: "yield_farmer",
     name: "The Aggressive Farmer",
+    complexity: "fast",
     systemPrompt: `You are an aggressive yield farmer. You deploy everything into staking.
 You have a lower threshold for exiting than FARMER_01 — any 5% reserve drop or whale signal triggers action.
 

@@ -60,6 +60,13 @@ export interface AgentPersona {
   riskTolerance: number; // 0-1
   initialCapital: { token: number; usdc: number; stakedFraction?: number };
   goals: string[];
+  /**
+   * Routing hint for the LLM router:
+   * - "fast"       → boost model (cheap/fast) — reactive retail personas
+   * - "standard"   → primary model (default)
+   * - "reasoning"  → primary model, larger max_tokens (coordinated attackers)
+   */
+  complexity?: "fast" | "standard" | "reasoning";
 }
 
 export interface AgentState {

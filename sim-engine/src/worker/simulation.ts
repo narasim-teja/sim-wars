@@ -1,0 +1,155 @@
+import { TickController } from "../tick/tick-controller";
+import { StateManager } from "../tick/state-manager";
+import { AgentOrchestrator } from "../agents/orchestrator";
+import { SimDatabase } from "../db/database";
+import { LunaScenarioController } from "../scenarios/luna-controller";
+import { ChainExecutor } from "../chain/action-executor";
+import type { LLMClient } from "../llm/types";
+import type { SimulationConfig, AgentPersona, TickConfig, TickResult } from "../types";
+
+export interface RunSimulationOptions {
+  simId: string;
+  config: SimulationConfig;
+  agents: AgentPersona[];
+  tickConfig: TickConfig;
+  llm: LLMClient;
+  db: SimDatabase;
+  onChain?: boolean;
+  /** Called once before the tick loop starts. */
+  onStart?: (meta: { agentCount: number; maxTicks: number }) => void;
+  /** Called at the beginning of each tick. */
+  onTickStart?: (tick: number) => void;
+  /** Called after every tick completes. */
+  onTickComplete?: (result: TickResult) => void;
+  /** Called if the run trips the death-spiral threshold. */
+  onDeathSpiral?: (tick: number) => void;
+  /** Called right before the function resolves. */
+  onComplete?: (summary: { totalTicks: number; deathSpiralDetected: boolean; finalPrice: number; initialPrice: number }) => void;
+  /** Return `true` between ticks to pause, `false` to proceed, `"abort"` to stop. */
+  shouldPause?: () => Promise<false | true | "abort"> | (false | true | "abort");
+}
+
+export interface RunSimulationResult {
+  totalTicks: number;
+  deathSpiralDetected: boolean;
+  finalPrice: number;
+  initialPrice: number;
+}
+
+/**
+ * Self-contained tick loop — callable from both the CLI (src/index.ts) and
+ * the child-process worker (src/worker/main.ts). All I/O flows through
+ * injected callbacks so we don't `console.log` inside this function.
+ */
+export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimulationResult> {
+  const { simId, config, agents, tickConfig, llm, db, onChain } = opts;
+
+  db.createSimulation(simId, config);
+
+  const stateManager = new StateManager(config);
+
+  let chainExecutor: ChainExecutor | null = null;
+  if (onChain) {
+    chainExecutor = new ChainExecutor();
+    const { reserveLuna, reserveUst } = await chainExecutor.getPrice();
+    stateManager.setPoolReserves(reserveLuna, reserveUst);
+  }
+
+  const orchestrator = new AgentOrchestrator(agents, llm, stateManager, db, simId, chainExecutor);
+
+  let lunaController: LunaScenarioController | null = null;
+  if (config.stablecoin?.enabled) {
+    lunaController = new LunaScenarioController(config);
+  }
+
+  const tick = new TickController({
+    intervalMs: tickConfig.intervalMs,
+    maxTicks: tickConfig.maxTicks,
+  });
+
+  let deathSpiralDetected = false;
+  let lastCompletedTick = 0;
+  const initialPrice = config.amm.initialPrice;
+
+  opts.onStart?.({ agentCount: agents.length, maxTicks: tickConfig.maxTicks });
+
+  tick.on("tick:start", async ({ tick: tickNum }) => {
+    const tickStart = Date.now();
+    opts.onTickStart?.(tickNum);
+
+    // Distribute staking rewards
+    const rewards = stateManager.computeStakingRewards();
+    const rewardsPaid = orchestrator.applyStakingRewards(rewards);
+
+    const agentBalances = orchestrator.getAgentBalances();
+    const state = await stateManager.readState(tickNum, agentBalances);
+    state.rewardsPaidThisTick = rewardsPaid;
+
+    if (lunaController) {
+      const r = lunaController.processTick(state);
+      state.stablecoinSupply = r.ustSupply;
+      state.reserveBalance = r.reserveBalance;
+      state.pegPrice = r.pegPrice;
+      state.initialReserveBalance = r.initialReserve;
+      state.reserveDrainedThisTick = r.reserveDrainedThisTick;
+      state.yieldPaidThisTick = r.yieldPaid;
+      state.borrowerRevenueThisTick = r.borrowerRevenue;
+      if (r.lunaMinted > 0) {
+        stateManager.inflateSupply(r.lunaMinted);
+        state.totalSupply += r.lunaMinted;
+        stateManager.executeSwap(r.lunaMinted, true);
+        state.tokenPrice = stateManager.getPrice();
+        state.priceHistory = [...state.priceHistory.slice(0, -1), state.tokenPrice];
+      }
+    }
+
+    const actions = await orchestrator.processTickBatch(state);
+
+    const currentPrice = stateManager.getPrice();
+    if (currentPrice < initialPrice * 0.01 && !deathSpiralDetected) {
+      deathSpiralDetected = true;
+      db.updateSimStatus(simId, "death_spiral");
+      opts.onDeathSpiral?.(tickNum);
+    }
+
+    const elapsed = Date.now() - tickStart;
+    db.insertTickState(simId, tickNum, state, elapsed);
+    lastCompletedTick = tickNum;
+
+    const result: TickResult = { tick: tickNum, actions, stateAfter: state, duration_ms: elapsed };
+    opts.onTickComplete?.(result);
+    tick.markTickComplete(result);
+
+    // Cooperative pause/abort between ticks
+    if (opts.shouldPause) {
+      const sig = await Promise.resolve(opts.shouldPause());
+      if (sig === "abort") tick.stop();
+      else if (sig === true) {
+        // Spin until resumed or aborted
+        while (true) {
+          const next = await Promise.resolve(opts.shouldPause());
+          if (next === "abort") { tick.stop(); break; }
+          if (next === false) break;
+          await Bun.sleep(250);
+        }
+      }
+    }
+  });
+
+  const results = await tick.start();
+  const finalPrice = stateManager.getPrice();
+
+  if (!deathSpiralDetected) {
+    db.updateSimStatus(simId, "completed");
+  }
+  db.updateSimTicks(simId, results.length);
+
+  const summary: RunSimulationResult = {
+    totalTicks: results.length,
+    deathSpiralDetected,
+    finalPrice,
+    initialPrice,
+  };
+  opts.onComplete?.(summary);
+  return summary;
+}

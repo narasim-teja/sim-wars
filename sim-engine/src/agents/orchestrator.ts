@@ -6,28 +6,32 @@ import type {
   LLMResponse,
   ActionType,
 } from "../types";
-import { OllamaClient } from "../llm/ollama-client";
+import type { LLMClient, LLMBatchItem } from "../llm/types";
 import { buildAgentPrompt } from "../llm/prompt-builder";
 import { StateManager } from "../tick/state-manager";
 import { SimDatabase } from "../db/database";
 import type { ChainExecutor } from "../chain/action-executor";
+import { InMemoryStore, type MemoryStore } from "./memory";
 
 export class AgentOrchestrator {
   private agents: Map<string, AgentState> = new Map();
-  private llm: OllamaClient;
+  private llm: LLMClient;
   private stateManager: StateManager;
   private db: SimDatabase;
   private simId: string;
   private chain: ChainExecutor | null;
+  private memory: MemoryStore;
 
   constructor(
     personas: AgentPersona[],
-    llm: OllamaClient,
+    llm: LLMClient,
     stateManager: StateManager,
     db: SimDatabase,
     simId: string,
-    chain: ChainExecutor | null = null
+    chain: ChainExecutor | null = null,
+    memory: MemoryStore = new InMemoryStore()
   ) {
+    this.memory = memory;
     this.llm = llm;
     this.stateManager = stateManager;
     this.db = db;
@@ -93,10 +97,11 @@ export class AgentOrchestrator {
     for (let i = 0; i < agentList.length; i += batchSize) {
       const batch = agentList.slice(i, i + batchSize);
 
-      // Build prompts for this batch
-      const prompts = batch.map((agent) => ({
+      // Build prompts for this batch, tagged with complexity for boost routing
+      const prompts: LLMBatchItem[] = batch.map((agent) => ({
         agentId: agent.persona.id,
         prompt: buildAgentPrompt(agent, sim),
+        complexity: agent.persona.complexity ?? "standard",
       }));
 
       // Run LLM calls in parallel
@@ -116,11 +121,9 @@ export class AgentOrchestrator {
         const action = await this.executeAction(agent, validated, sim);
         allActions.push(action);
 
-        // Update agent memory
-        agent.memory.push(action);
-        if (agent.memory.length > 20) {
-          agent.memory = agent.memory.slice(-20);
-        }
+        // Update agent memory via the store (single source of truth)
+        this.memory.recordAction(agent.persona.id, action);
+        agent.memory = this.memory.getRecentActions(agent.persona.id, 20);
 
         // Persist to DB
         this.db.insertAction(this.simId, action);
@@ -132,10 +135,8 @@ export class AgentOrchestrator {
         if (action.action !== "hold") {
           for (const agent of agentList) {
             if (agent.persona.id !== action.agentId) {
-              agent.observedActions.push(action);
-              if (agent.observedActions.length > 10) {
-                agent.observedActions = agent.observedActions.slice(-10);
-              }
+              this.memory.recordObservation(agent.persona.id, action);
+              agent.observedActions = this.memory.getRecentObservations(agent.persona.id, 10);
             }
           }
         }

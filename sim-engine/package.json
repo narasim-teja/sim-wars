@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "luna": "bun run src/index.ts ../scenarios/luna-ust.ts",
+    "api": "bun run src/api/server.ts",
+    "worker": "bun run src/worker/main.ts",
+    "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {

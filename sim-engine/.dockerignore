@@ -1,0 +1,7 @@
+node_modules
+.local
+target
+*.log
+.DS_Store
+Dockerfile
+.dockerignore

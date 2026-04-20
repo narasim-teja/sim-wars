@@ -309,12 +309,18 @@ User uploads PDF / pastes text
 
 ### Simulation Engine
 - **Runtime**: Bun
-- **Language**: TypeScript
+- **Language**: TypeScript — kept deliberately. See [Architectural Review — Post-Phase 1](#architectural-review--post-phase-1-2026-04-19) for the rationale (Solana tooling is TS-native; we are not using CAMEL-AI/OASIS).
 - **Tick loop**: Custom EventEmitter-based tick controller
-- **Agent LLM**: Ollama (Qwen3 8B, local, zero API cost)
+- **Agent LLM — provider-agnostic via OpenAI-compatible adapter**:
+  - Dev (local): Ollama (Qwen3 8B, zero API cost, Mac Studio)
+  - Prod / demo: OpenRouter (hosted Qwen/Llama/Claude via one unified OpenAI-compatible endpoint)
+  - Dual-model routing ("boost" pattern, stolen from MiroFish): fast/cheap model for simple personas (DEGEN, PANIC, FARMER), reasoning model for complex ones (WHALE, GOV, ANALYST, INSIDER)
+  - Single `LLMClient` interface behind a `LLM_PROVIDER=ollama|openrouter` env switch
 - **Report generation**: Claude API (single call post-sim, claude-sonnet-4-6)
 - **State storage**: SQLite via Bun's built-in SQLite
-- **WebSocket server**: Bun native WebSocket
+- **Agent memory (per-agent, cross-tick)**: SQLite + lightweight in-memory embedding recall for Phase 2; Zep Cloud or mem0 as an optional Phase 3 upgrade for graph/temporal recall
+- **Sim-worker isolation**: Sim runs as a child Bun process spawned by the API server; API ↔ worker talk over **filesystem IPC** (`runs/<sim_id>/commands/`, `runs/<sim_id>/events/`). Pattern borrowed from MiroFish — simple, debuggable, restart-safe, no broker
+- **WebSocket server**: Bun native WebSocket (API server → Next.js frontend). REST polling is not sufficient; our tick cadence is 20s in dev and the action feed is the showcase.
 
 ### Solana
 - **Framework**: Anchor (Rust)
@@ -327,8 +333,139 @@ User uploads PDF / pastes text
 
 ### Infrastructure
 - **Local dev**: Mac Studio M2 Max (32GB) — Ollama + Bun + Anchor
-- **Deployment**: Railway (Next.js + sim engine), Vercel alt for frontend
+- **Containerization**: Single `Dockerfile` (multi-stage: Bun for sim-engine + Node for Next.js build) + `docker-compose.yml` for one-shot `docker compose up` demos. Pattern borrowed from MiroFish's single-container `concurrently` layout. Three services in compose: `sim-engine` (Bun), `frontend` (Next.js), `ollama` (optional, disabled when `LLM_PROVIDER=openrouter`).
+- **Deployment**: Railway (sim-engine API + WebSocket), Vercel (Next.js frontend). Ollama not deployable on Railway — prod must use OpenRouter.
 - **Monitoring**: Helius webhooks for on-chain events
+- **Secrets**: `.env.example` checked in; Railway/Vercel env vars for prod. `OPENROUTER_API_KEY`, `HELIUS_API_KEY`, `ANTHROPIC_API_KEY` (report generation).
+
+---
+
+## Architectural Review — Post-Phase 1 (2026-04-19)
+
+> Written after Phase 1 shipped. Captures structural decisions taken before Phase 2 opens so we don't refactor mid-sprint. See [phase1.md](phase1.md) for what's already built.
+
+### Phase 1 recap — what we already have
+
+- 4 Anchor 1.0 programs deployed (token-mint, amm-dex, staking, governance), 19/19 LiteSVM Rust tests passing.
+- Sim engine on Bun + TypeScript with: tick controller, state manager (in-mem AMM + Gini + staking), orchestrator, Ollama HTTP client with 4-fallback JSON parsing, SQLite persistence (`simulations`, `tick_states`, `agent_actions`), on-chain `ChainExecutor` for swaps.
+- LUNA scenario with 8 personas reproduces the death spiral end-to-end.
+
+The gap between "what Phase 1 proved" and "what Phase 2 needs" is less about code and more about **structure** — once 20 agents run live on a public URL, the choices below become expensive to change.
+
+### MiroFish reference read
+
+We're explicitly drafting off MiroFish ([github.com/666ghj/MiroFish](https://github.com/666ghj/MiroFish)) for orchestration patterns. Below is what we adopt, adapt, and skip.
+
+| MiroFish pattern | Our decision | Notes |
+|---|---|---|
+| Python + Flask backend, OASIS/CAMEL-AI swarm engine | **Skip the language switch.** Keep Bun + TypeScript. | MiroFish chose Python because OASIS/CAMEL is Python-native. We don't use those. Every Solana dep we need (`@solana/web3.js`, `@anchor-lang/core`, `@solana/spl-token`, Helius/Yellowstone SDKs) is TS-native. Switching to Python means writing subprocess shims for every chain call — pure loss. The "we're just using LLM wrappers" assumption breaks once on-chain execution is core. TS stays. |
+| OpenAI-compatible LLM endpoint + optional `LLM_BOOST_*` fallback model | **Adopt.** | Refactor `OllamaClient` into a generic `LLMClient` behind an OpenAI-compatible adapter. Two env triplets: primary (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) and boost (`LLM_BOOST_*`). Orchestrator routes per-persona: reasoning model for WHALE/GOV/ANALYST/INSIDER, fast model for DEGEN/PANIC/FARMER. Works against Ollama (dev) **and** OpenRouter (prod/demo) with zero code change — OpenRouter speaks OpenAI schema. |
+| Zep Cloud for per-agent long-term memory (GraphRAG) | **Defer.** SQLite + optional vector recall in Phase 2. Revisit in Phase 3. | We already have per-agent action history in SQLite. Phase 2 adds lightweight embedding-based recall (top-k similar past ticks). Zep is a paid external service — inappropriate for an open-source hackathon artifact by default, and our ticks are short-horizon enough that a 10-action window mostly suffices. Keep `MemoryStore` interface narrow so Zep/mem0 plugs in later behind the same shape. |
+| LLM-drafted simulation config from user goal | **Adopt in Phase 3.** | Phase 3 already has "whitepaper extraction"; widen it to also let an LLM draft `SimulationConfig` defaults from a plain-English goal ("stress-test a memecoin launch with high initial unlock"). Same Claude call, different prompt branch. |
+| Filesystem IPC between API server and sim subprocess (`commands/`, `responses/` dirs) | **Adopt.** | Today `src/index.ts` is one process — tick loop, orchestrator, WebSocket all together. A crashed LLM call or broken tx can nuke the whole sim. Phase 2 splits this: an **API/WebSocket server** (long-lived) spawns a **SimWorker** child process per run. They talk over `runs/<sim_id>/commands/*.json` and `runs/<sim_id>/events/*.ndjson`. Pause/resume/abort become file-writes; front-end UI maps 1:1 to filesystem events. Survives restarts, easy to inspect, no broker. |
+| REST polling (Vue → Flask) | **Skip. Keep WebSockets.** | MiroFish ticks are minutes long so polling is fine. Ours are ~20s with an action feed that's supposed to feel alive. Bun native WS server → Next.js client, one subscription per sim. |
+| Single Docker container via `concurrently` | **Adopt, but split into compose services.** | Bun sim-engine and Next.js frontend belong in separate images — different base, different ports, different deploy target (Railway vs Vercel). `docker-compose.yml` composes them for local/demo parity. See [Infrastructure](#infrastructure). |
+
+### Language & runtime — locked in
+
+- **Sim engine stays on Bun + TypeScript.** Already passes LUNA backtest; every Solana SDK is TS-native; subprocess-to-Python would be a regression. The earlier "we're just using LLM wrappers" take underweights the on-chain half of the system.
+- **Programs stay on Anchor 1.0 / Rust.** No change.
+- **Frontend stays on Next.js 15.** App Router + shadcn/ui. WebSocket client only — no SSR for the live dashboard (it's a client component reading a WS stream).
+
+### LLM provider strategy — dev-to-prod ramp
+
+```
+Phase 1 (done):       Ollama + Qwen3 8B, local-only, zero cost.
+Phase 2 (refactor):   Introduce LLMClient adapter. Ollama is one provider.
+                      Unit-test with a mock provider. Ship "boost model" split.
+Phase 3 (cloud):      OpenRouter provider. One API key → Qwen, Llama, Claude,
+                      GPT all available. Switch via env. Ollama optional in prod.
+Post-hackathon:       Per-tier routing — cheap Qwen for retail personas,
+                      mid-tier Llama-70B for attackers, Claude Opus/Sonnet for
+                      report generation. OpenRouter bills per call.
+```
+
+**Why OpenRouter, not direct OpenAI/Anthropic/provider APIs:**
+- One account, one key, 300+ models — swap models without code/deploy changes.
+- OpenAI-compatible schema, so the adapter written against Ollama works unmodified.
+- Usage dashboards and spend caps per key (hackathon budget sanity).
+- Lets us advertise to contributors: "runs on anything OpenAI-compatible" = lowest onboarding friction.
+
+### Sim-engine process model — Phase 2 refactor
+
+Current: one long-running Bun process does everything. Moving to:
+
+```
+┌────────────────────────────────────────────────────────┐
+│  API / WebSocket Server (Bun)                          │
+│  - REST: create sim, pause, resume, abort              │
+│  - WS: broadcast tick events to frontend               │
+│  - Writes runs/<sim_id>/commands/*.json                │
+│  - Tails  runs/<sim_id>/events/*.ndjson                │
+└────────────────────────────────────────────────────────┘
+            │ spawns child, waits on events dir
+            ▼
+┌────────────────────────────────────────────────────────┐
+│  SimWorker (Bun, one per active run)                   │
+│  - TickController + StateManager                       │
+│  - AgentOrchestrator → LLMClient (Ollama|OpenRouter)   │
+│  - ChainExecutor → Solana devnet                       │
+│  - ReportGenerator                                     │
+│  - Polls commands/, writes events/                     │
+│  - Owns SQLite file per run                            │
+└────────────────────────────────────────────────────────┘
+```
+
+- Worker crashes don't take down the API.
+- Multiple concurrent sims = multiple worker processes, same code.
+- `runs/<sim_id>/` is self-contained: events, SQLite, final report. One `tar` = full reproducible artifact.
+
+### Docker & deployment plan
+
+Phase 3 Day 7 replaces the ad-hoc "`bun run` in one terminal" with:
+
+- `sim-engine/Dockerfile` — Bun runtime, installs `anchor-lang` types, mounts `runs/` volume.
+- `frontend/Dockerfile` — Node build → Next.js standalone → nginx or `next start`.
+- `docker-compose.yml` — `sim-engine`, `frontend`, optional `ollama` (commented out for OpenRouter prod).
+- `docker-compose.dev.yml` — overlay that mounts source for hot reload.
+- `.env.example` — every env var the project reads.
+
+Prod deploy split:
+- Frontend → Vercel (auto from `main`).
+- Sim-engine + WS → Railway (one service, persistent disk for `runs/`, OpenRouter only).
+- Anchor programs stay on Solana devnet (free, shared across all frontend visitors).
+
+### Open-source readiness (pre-submission)
+
+We're shipping this public. Structural choices to make now so we don't rewrite commit history later:
+
+- **License**: MIT. Add `LICENSE` in Phase 3 Day 7 alongside the README.
+- **Secrets hygiene**: no API keys in commits. `.env.example` only. Audit `git log -p -- '*.env*'` before going public.
+- **No vendor lock-in narrative**: provider-agnostic LLM, OpenAI-compatible by default.
+- **Reproducibility**: a fresh clone → `docker compose up` → working LUNA demo in <5 min. This is part of the submission scoring.
+- **Contribution ergonomics**: `CONTRIBUTING.md` with "add a new persona" and "add a new scenario" recipes. Phase 4 traction strategy depends on people forking and running their own sims.
+- **Shape the demo for forkability**: every default (20 agents, 20s tick, LUNA scenario) should be overridable via a single YAML/JSON file, not code edits.
+
+### Phase 2 — Day 0 structural refactor (added 2026-04-19)
+
+Before Phase 2 Day 1 work begins:
+
+1. **LLMClient refactor** (~4h)
+   - Extract `src/llm/client.ts` interface: `generate(prompt, opts): Promise<AgentDecision>`.
+   - Implement `OllamaProvider` (wraps current client) and `OpenRouterProvider` (OpenAI-compatible).
+   - `LLM_PROVIDER` env switch in `src/index.ts`.
+   - Boost-model split: orchestrator picks provider per persona via a `complexity` field on `AgentPersona`.
+2. **Sim-worker split** (~6h)
+   - New `src/api/server.ts` (REST + WS). Today's `src/index.ts` becomes `src/worker/main.ts`.
+   - Filesystem IPC module: `src/ipc/command-reader.ts`, `src/ipc/event-writer.ts`.
+   - Run id = UUID; `runs/<sim_id>/` per run.
+3. **Memory interface** (~2h)
+   - `src/agents/memory.ts` — `MemoryStore` interface (get recent, write action, get similar).
+   - SQLite implementation first. Zep/mem0 stub file with TODO.
+4. **Dockerfile stubs** (~2h)
+   - `sim-engine/Dockerfile` + root `docker-compose.yml` that at least builds and runs the worker against a seeded LUNA scenario without the frontend.
+
+Total: ~14h / 2 days. Buys us clean footing for the rest of Phase 2.
 
 ---
 
@@ -580,25 +717,47 @@ const LUNA_UST_CONFIG: SimulationConfig = {
 
 ```
 tokenomics-war-game/
-├── programs/                    # Anchor programs (Rust)
+├── programs/                    # Anchor programs (Rust) — Phase 1 done
 │   ├── token-mint/
 │   ├── amm-dex/
 │   ├── staking/
 │   └── governance/
+├── program-tests/               # LiteSVM Rust test harness — Phase 1 done
 ├── sim-engine/                  # Bun/TypeScript simulation
 │   ├── src/
+│   │   ├── api/                 # [Phase 2] REST + WebSocket server (long-lived)
+│   │   │   ├── server.ts        # Bun HTTP + WS, spawns SimWorker processes
+│   │   │   └── routes.ts        # POST /sim, POST /sim/:id/{pause,resume,abort}
+│   │   ├── worker/              # [Phase 2] SimWorker child process
+│   │   │   └── main.ts          # Replaces today's src/index.ts
+│   │   ├── ipc/                 # [Phase 2] filesystem IPC (MiroFish-style)
+│   │   │   ├── command-reader.ts
+│   │   │   └── event-writer.ts
 │   │   ├── tick/                # TickController, StateManager
-│   │   ├── agents/              # AgentOrchestrator, personas, prompts
-│   │   ├── llm/                 # Ollama client, prompt builder
-│   │   ├── chain/               # Helius client, Yellowstone, tx executor
+│   │   ├── agents/
+│   │   │   ├── orchestrator.ts
+│   │   │   ├── personas.ts
+│   │   │   └── memory.ts        # [Phase 2] MemoryStore interface (SQLite impl)
+│   │   ├── llm/                 # [Phase 2 refactor] provider-agnostic
+│   │   │   ├── client.ts        # LLMClient interface
+│   │   │   ├── ollama-provider.ts
+│   │   │   ├── openrouter-provider.ts
+│   │   │   ├── mock-provider.ts # for tests
+│   │   │   └── prompt-builder.ts
+│   │   ├── chain/               # Anchor SDK wrappers, tx executor
 │   │   ├── metrics/             # Gini, concentration, threat detection
 │   │   ├── report/              # Claude API report generator
-│   │   └── ws/                  # WebSocket server
+│   │   └── db/                  # SQLite per-run
 │   ├── scenarios/
-│   │   ├── luna-ust.ts
-│   │   └── crv-curve.ts
-│   └── index.ts
-├── frontend/                    # Next.js 15
+│   │   ├── luna-ust.ts          # done
+│   │   ├── crv-curve.ts         # Phase 3
+│   │   └── verify-luna.ts       # done
+│   ├── scripts/
+│   │   ├── deploy-programs.ts
+│   │   ├── fund-agents.ts
+│   │   └── extract-params.ts    # Phase 3 whitepaper extraction
+│   └── Dockerfile               # [Phase 3] Bun runtime image
+├── frontend/                    # Next.js 15 — Phase 2
 │   ├── app/
 │   │   ├── page.tsx             # Setup / whitepaper upload
 │   │   ├── simulate/[id]/       # Live sim dashboard
@@ -611,12 +770,20 @@ tokenomics-war-game/
 │   │   ├── ThreatIndicator.tsx
 │   │   ├── SimConsole.tsx       # Terminal-style log
 │   │   └── ReportPanel.tsx      # MiroFish-style report
-│   └── hooks/
-│       └── useSimulation.ts     # WebSocket state hook
-├── scripts/
-│   ├── deploy-programs.ts       # Deploy Anchor programs with config
-│   ├── fund-agents.ts           # Airdrop SOL to agent wallets
-│   └── extract-params.ts        # Claude whitepaper extraction
+│   ├── hooks/
+│   │   └── useSimulation.ts     # WebSocket state hook
+│   └── Dockerfile               # [Phase 3] Next.js standalone image
+├── runs/                        # [Phase 2] per-sim IPC + artifacts (gitignored)
+│   └── <sim_id>/
+│       ├── commands/            # API → worker
+│       ├── events/              # worker → API (NDJSON)
+│       ├── sim.sqlite
+│       └── report.pdf
+├── docker-compose.yml           # [Phase 3] sim-engine + frontend + optional ollama
+├── docker-compose.dev.yml       # [Phase 3] dev overlay with hot reload
+├── .env.example                 # [Phase 2] every env var documented
+├── LICENSE                      # [Phase 3] MIT, for open-source release
+├── CONTRIBUTING.md              # [Phase 3] add-a-persona / add-a-scenario recipes
 └── README.md
 ```
 
