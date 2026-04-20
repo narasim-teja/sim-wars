@@ -3,7 +3,12 @@ import { PublicKey } from "@solana/web3.js";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TOKEN_MINT_PROGRAM_ID, AMM_DEX_PROGRAM_ID } from "./connection";
+import {
+  TOKEN_MINT_PROGRAM_ID,
+  AMM_DEX_PROGRAM_ID,
+  STAKING_PROGRAM_ID,
+  GOVERNANCE_PROGRAM_ID,
+} from "./connection";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "../../..");
@@ -30,6 +35,16 @@ export function getTokenMintProgram(provider: AnchorProvider): Program {
 
 export function getAmmDexProgram(provider: AnchorProvider): Program {
   const idl = loadIdl("amm_dex");
+  return new Program(idl, provider);
+}
+
+export function getStakingProgram(provider: AnchorProvider): Program {
+  const idl = loadIdl("staking");
+  return new Program(idl, provider);
+}
+
+export function getGovernanceProgram(provider: AnchorProvider): Program {
+  const idl = loadIdl("governance");
   return new Program(idl, provider);
 }
 
@@ -92,6 +107,74 @@ export function deriveVaultB(pool: PublicKey): [PublicKey, number] {
   );
 }
 
+// ---- staking PDAs (mirror programs/staking/src/lib.rs seeds) ----
+
+export function deriveStakingPool(stakeMint: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("staking_pool"), stakeMint.toBuffer()],
+    STAKING_PROGRAM_ID,
+  );
+}
+
+export function deriveStakingPoolAuthority(pool: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("pool_authority"), pool.toBuffer()],
+    STAKING_PROGRAM_ID,
+  );
+}
+
+export function deriveStakeVault(pool: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("stake_vault"), pool.toBuffer()],
+    STAKING_PROGRAM_ID,
+  );
+}
+
+export function deriveRewardVault(pool: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("reward_vault"), pool.toBuffer()],
+    STAKING_PROGRAM_ID,
+  );
+}
+
+export function deriveStakeAccount(pool: PublicKey, user: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("stake_account"), pool.toBuffer(), user.toBuffer()],
+    STAKING_PROGRAM_ID,
+  );
+}
+
+// ---- governance PDAs (mirror programs/governance/src/lib.rs seeds) ----
+
+export function deriveGovernance(stakingPool: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("governance"), stakingPool.toBuffer()],
+    GOVERNANCE_PROGRAM_ID,
+  );
+}
+
+export function deriveProposal(
+  governance: PublicKey,
+  proposalId: number,
+): [PublicKey, number] {
+  const idBuf = Buffer.alloc(4);
+  idBuf.writeUInt32LE(proposalId, 0);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("proposal"), governance.toBuffer(), idBuf],
+    GOVERNANCE_PROGRAM_ID,
+  );
+}
+
+export function deriveVoteReceipt(
+  proposal: PublicKey,
+  voter: PublicKey,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("vote"), proposal.toBuffer(), voter.toBuffer()],
+    GOVERNANCE_PROGRAM_ID,
+  );
+}
+
 /** Pad a string to a 32-byte buffer (allocation name format). */
 export function nameToBytes(name: string): Buffer {
   const buf = Buffer.alloc(32);
@@ -111,11 +194,33 @@ export interface AgentWalletEntry {
   ustAta: string;
 }
 
+export interface StakingDeployment {
+  program: string;
+  pool: string;
+  poolAuthority: string;
+  stakeVault: string;
+  rewardVault: string;
+  stakeMint: string;
+  /** Cooldown in ticks between request_unstake and complete_unstake. */
+  unstakeCooldownTicks: number;
+  /** Lock period in ticks before a stake can request unstake. */
+  lockPeriodTicks: number;
+}
+
+export interface GovernanceDeployment {
+  program: string;
+  governance: string;
+  /** Used to mirror the on-chain proposal count for PDA derivation. */
+  initialProposalCount?: number;
+}
+
 export interface Deployment {
   cluster: string;
   programs: {
     tokenMint: string;
     ammDex: string;
+    staking?: string;
+    governance?: string;
   };
   mints: {
     luna: string;
@@ -132,6 +237,10 @@ export interface Deployment {
   config: {
     address: string;
   };
+  /** Optional staking pool deployment — when present, on-chain staking is enabled. */
+  staking?: StakingDeployment;
+  /** Optional governance deployment — when present, on-chain governance is enabled. */
+  governance?: GovernanceDeployment;
   agents: AgentWalletEntry[];
   decimals: number;
 }

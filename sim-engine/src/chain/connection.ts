@@ -33,3 +33,9 @@ export const TOKEN_MINT_PROGRAM_ID = new PublicKey(
 export const AMM_DEX_PROGRAM_ID = new PublicKey(
   "Dz3ZGCtmpqrxLs3GaKxc12wJGT7qNZNebdd6pzU5JnFx",
 );
+export const STAKING_PROGRAM_ID = new PublicKey(
+  "2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY",
+);
+export const GOVERNANCE_PROGRAM_ID = new PublicKey(
+  "Hk4eHkcr5njyntu4WEQuafVKkaK4LQJ8dTH5fqAArHFD",
+);

@@ -4,8 +4,9 @@ import { AgentOrchestrator } from "../agents/orchestrator";
 import { SimDatabase } from "../db/database";
 import { LunaScenarioController } from "../scenarios/luna-controller";
 import { ChainExecutor } from "../chain/action-executor";
+import { computeCoordinationEdges } from "../metrics/coordination";
 import type { LLMClient } from "../llm/types";
-import type { SimulationConfig, AgentPersona, TickConfig, TickResult } from "../types";
+import type { SimulationConfig, AgentPersona, TickConfig, TickResult, AgentAction } from "../types";
 
 export interface RunSimulationOptions {
   simId: string;
@@ -70,12 +71,25 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   let deathSpiralDetected = false;
   let lastCompletedTick = 0;
   const initialPrice = config.amm.initialPrice;
+  const recentActions: AgentAction[] = [];
+  const COORDINATION_WINDOW = 5;
+  const largeThreshold = config.token.totalSupply * 0.01;
 
   opts.onStart?.({ agentCount: agents.length, maxTicks: tickConfig.maxTicks });
 
   tick.on("tick:start", async ({ tick: tickNum }) => {
     const tickStart = Date.now();
     opts.onTickStart?.(tickNum);
+
+    // If on-chain staking/governance are deployed, bump their authority-gated
+    // tick counters so reward accrual + voting-period checks move in lockstep.
+    if (chainExecutor && (chainExecutor.hasStaking() || chainExecutor.hasGovernance())) {
+      try {
+        await chainExecutor.setTick(tickNum);
+      } catch (e) {
+        console.error(`  chain setTick(${tickNum}) failed:`, (e as Error).message);
+      }
+    }
 
     // Distribute staking rewards
     const rewards = stateManager.computeStakingRewards();
@@ -104,6 +118,18 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     }
 
     const actions = await orchestrator.processTickBatch(state);
+
+    // Track recent actions for coordination detection (sliding window).
+    recentActions.push(...actions);
+    const cutoffTick = tickNum - COORDINATION_WINDOW + 1;
+    while (recentActions.length > 0 && recentActions[0].tick < cutoffTick) {
+      recentActions.shift();
+    }
+    state.coordinationEdges = computeCoordinationEdges(recentActions, tickNum, {
+      windowTicks: COORDINATION_WINDOW,
+      largeAmountThreshold: largeThreshold,
+      minCoOccurrences: 2,
+    });
 
     const currentPrice = stateManager.getPrice();
     if (currentPrice < initialPrice * 0.01 && !deathSpiralDetected) {

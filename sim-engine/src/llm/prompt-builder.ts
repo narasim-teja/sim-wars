@@ -77,6 +77,13 @@ export function buildAgentPrompt(
     ? `\n- Staking rewards paid this tick: ${sim.rewardsPaidThisTick.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens`
     : "";
 
+  const activeProposals = sim.governanceProposals.filter((p) => p.status === "active");
+  const governanceLine = activeProposals.length > 0
+    ? `\n- Active governance proposals: ${activeProposals
+        .map((p) => `#${p.id} by ${p.proposer} "${p.description.slice(0, 40)}" (for ${Math.round(p.votesFor).toLocaleString()} vs against ${Math.round(p.votesAgainst).toLocaleString()}, expires tick ${p.tickExpires})`)
+        .join("; ")}`
+    : "";
+
   return `You are ${agent.persona.name} in a live token economy simulation on Solana devnet.
 
 YOUR IDENTITY AND GOALS:
@@ -88,7 +95,7 @@ CURRENT MARKET STATE (Tick ${sim.tick}):
 - Your holdings: ${agent.holdings.token.toLocaleString()} tokens, ${agent.holdings.staked.toLocaleString()} staked, $${agent.holdings.usdc.toLocaleString()} USDC
 - Staking APY: ${sim.stakingAPY.toFixed(2)}%${stakingWarning}
 - Total staked: ${((sim.stakedSupply / sim.totalSupply) * 100).toFixed(1)}% of supply
-- Wealth concentration (Gini): ${sim.giniCoefficient.toFixed(3)}${giniWarning}${stablecoinSection}${rewardsLine}
+- Wealth concentration (Gini): ${sim.giniCoefficient.toFixed(3)}${giniWarning}${stablecoinSection}${rewardsLine}${governanceLine}
 - Recent large trades: ${recentTrades}
 
 YOUR RECENT ACTIONS: ${myActions}
@@ -107,9 +114,9 @@ DECISION GUIDANCE:
 
 Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
 {
-  "action": "buy" | "sell" | "stake" | "unstake" | "hold" | "burn_stablecoin",
-  "amount": <number or null for hold>,
-  "reasoning": "<1-2 sentence explanation of your decision>",
+  "action": "buy" | "sell" | "stake" | "unstake" | "propose" | "vote_yes" | "vote_no" | "hold" | "burn_stablecoin",
+  "amount": <number, or for vote_yes/vote_no the proposal id (omit to vote on latest), null for hold>,
+  "reasoning": "<1-2 sentence explanation; for 'propose' this becomes the proposal description>",
   "threat_assessment": "<what failure mode do you sense, if any>"
 }`;
 }

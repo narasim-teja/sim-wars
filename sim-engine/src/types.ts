@@ -130,6 +130,7 @@ export interface SimulationState {
   governanceProposals: Proposal[];
   topHolders: { address: string; agentId: string; balance: number }[];
   recentLargeTrades: { agentId: string; action: string; amount: number }[];
+  coordinationEdges: { a: string; b: string; score: number }[];
   poolReserveA: number;
   poolReserveB: number;
   // LUNA-specific

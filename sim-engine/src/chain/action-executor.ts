@@ -1,9 +1,14 @@
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { BN, AnchorProvider } from "@anchor-lang/core";
-import { getAccount } from "@solana/spl-token";
+import { getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   getAmmDexProgram,
+  getStakingProgram,
+  getGovernanceProgram,
   loadDeployment,
+  deriveStakeAccount,
+  deriveProposal,
+  deriveVoteReceipt,
   type Deployment,
   type AgentWalletEntry,
 } from "./sdk";
@@ -14,6 +19,23 @@ export interface ChainSwapResult {
   amountInAtoms: bigint;
   amountOutAtoms: bigint;
   newPrice: number;
+}
+
+export interface ChainStakeResult {
+  txSignature: string;
+  amountAtoms: bigint;
+}
+
+export interface ChainProposalResult {
+  txSignature: string;
+  proposalId: number;
+  proposalPubkey: string;
+}
+
+export interface ChainVoteResult {
+  txSignature: string;
+  proposalId: number;
+  support: boolean;
 }
 
 /**
@@ -166,5 +188,296 @@ export class ChainExecutor {
 
   hasAgent(agentId: string): boolean {
     return this.agentWallets.has(agentId);
+  }
+
+  // ==========================================================================
+  // Staking (optional — requires deployment.staking)
+  // ==========================================================================
+
+  /** True if an on-chain staking pool is configured. */
+  hasStaking(): boolean {
+    return !!this.deployment.staking;
+  }
+
+  /** True if governance is configured (implies staking is too). */
+  hasGovernance(): boolean {
+    return !!this.deployment.governance && !!this.deployment.staking;
+  }
+
+  private requireStaking() {
+    if (!this.deployment.staking) {
+      throw new Error("staking deployment not configured");
+    }
+    return this.deployment.staking;
+  }
+
+  private requireGovernance() {
+    if (!this.deployment.governance) {
+      throw new Error("governance deployment not configured");
+    }
+    return this.deployment.governance;
+  }
+
+  /**
+   * Initialize a per-agent stake account PDA. Idempotent — returns null if the
+   * account already exists so callers can call this lazily before the first stake.
+   */
+  async ensureStakeAccount(agentId: string): Promise<string | null> {
+    const st = this.requireStaking();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    const pool = new PublicKey(st.pool);
+    const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+
+    const info = await this.provider.connection.getAccountInfo(stakeAccount);
+    if (info) return null;
+
+    const program = getStakingProgram(this.provider);
+    const tx = await program.methods
+      .initializeStakeAccount()
+      .accounts({
+        user: wallet.keypair.publicKey,
+        pool,
+        stakeAccount,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+    return tx;
+  }
+
+  /** Stake `amount` tokens for the given agent. Auto-creates stake_account if needed. */
+  async stake(agentId: string, amount: number): Promise<ChainStakeResult> {
+    const st = this.requireStaking();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+    if (amount <= 0) throw new Error("amount must be > 0");
+
+    await this.ensureStakeAccount(agentId);
+
+    const pool = new PublicKey(st.pool);
+    const stakeVault = new PublicKey(st.stakeVault);
+    const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+    const userAta = new PublicKey(wallet.entry.lunaAta);
+
+    const amountAtoms = this.toAtoms(amount);
+    const program = getStakingProgram(this.provider);
+    const txSignature = await program.methods
+      .stake(amountAtoms)
+      .accounts({
+        user: wallet.keypair.publicKey,
+        pool,
+        stakeAccount,
+        owner: wallet.keypair.publicKey,
+        stakeVault,
+        userAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return { txSignature, amountAtoms: BigInt(amountAtoms.toString()) };
+  }
+
+  /** Request unstake → moves `amount` into the pending bucket and starts cooldown. */
+  async requestUnstake(agentId: string, amount: number): Promise<ChainStakeResult> {
+    const st = this.requireStaking();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+    if (amount <= 0) throw new Error("amount must be > 0");
+
+    const pool = new PublicKey(st.pool);
+    const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+
+    const amountAtoms = this.toAtoms(amount);
+    const program = getStakingProgram(this.provider);
+    const txSignature = await program.methods
+      .requestUnstake(amountAtoms)
+      .accounts({
+        user: wallet.keypair.publicKey,
+        pool,
+        stakeAccount,
+        owner: wallet.keypair.publicKey,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return { txSignature, amountAtoms: BigInt(amountAtoms.toString()) };
+  }
+
+  /** Complete a previously requested unstake after the cooldown expires. */
+  async completeUnstake(agentId: string): Promise<{ txSignature: string }> {
+    const st = this.requireStaking();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    const pool = new PublicKey(st.pool);
+    const poolAuthority = new PublicKey(st.poolAuthority);
+    const stakeVault = new PublicKey(st.stakeVault);
+    const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+    const userAta = new PublicKey(wallet.entry.lunaAta);
+
+    const program = getStakingProgram(this.provider);
+    const txSignature = await program.methods
+      .completeUnstake()
+      .accounts({
+        user: wallet.keypair.publicKey,
+        pool,
+        poolAuthority,
+        stakeAccount,
+        owner: wallet.keypair.publicKey,
+        stakeVault,
+        userAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return { txSignature };
+  }
+
+  /** Claim accrued rewards from the reward vault. */
+  async claimRewards(agentId: string): Promise<{ txSignature: string }> {
+    const st = this.requireStaking();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    const pool = new PublicKey(st.pool);
+    const poolAuthority = new PublicKey(st.poolAuthority);
+    const rewardVault = new PublicKey(st.rewardVault);
+    const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+    const userAta = new PublicKey(wallet.entry.lunaAta);
+
+    const program = getStakingProgram(this.provider);
+    const txSignature = await program.methods
+      .claimRewards()
+      .accounts({
+        user: wallet.keypair.publicKey,
+        pool,
+        poolAuthority,
+        stakeAccount,
+        owner: wallet.keypair.publicKey,
+        rewardVault,
+        userAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return { txSignature };
+  }
+
+  /**
+   * Admin-gated: advance the on-chain tick counter on both staking and
+   * governance programs so reward accrual and voting-period checks move
+   * forward in lockstep with the simulation.
+   */
+  async setTick(tick: number): Promise<{ stakingTx?: string; governanceTx?: string }> {
+    const out: { stakingTx?: string; governanceTx?: string } = {};
+    const st = this.deployment.staking;
+    if (st) {
+      const program = getStakingProgram(this.provider);
+      out.stakingTx = await program.methods
+        .setTick(new BN(tick))
+        .accounts({
+          authority: this.provider.wallet.publicKey,
+          pool: new PublicKey(st.pool),
+        })
+        .rpc();
+    }
+    const gov = this.deployment.governance;
+    if (gov) {
+      const program = getGovernanceProgram(this.provider);
+      out.governanceTx = await program.methods
+        .setTick(new BN(tick))
+        .accounts({
+          authority: this.provider.wallet.publicKey,
+          governance: new PublicKey(gov.governance),
+        })
+        .rpc();
+    }
+    return out;
+  }
+
+  // ==========================================================================
+  // Governance (optional — requires deployment.governance)
+  // ==========================================================================
+
+  /**
+   * Create a new proposal. Returns the numeric id the chain assigned.
+   * Caller is responsible for supplying the current proposal count from
+   * their local tracking — governance.proposal_count PDA seed requires it.
+   */
+  async createProposal(
+    agentId: string,
+    proposalId: number,
+    description: string,
+  ): Promise<ChainProposalResult> {
+    const st = this.requireStaking();
+    const gov = this.requireGovernance();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    const pool = new PublicKey(st.pool);
+    const governance = new PublicKey(gov.governance);
+    const [proposerStake] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+    const [proposal] = deriveProposal(governance, proposalId);
+
+    // description packed to 64 bytes (program's [u8; 64] struct field)
+    const descBuf = Buffer.alloc(64);
+    descBuf.write(description, 0, "utf8");
+
+    const program = getGovernanceProgram(this.provider);
+    const txSignature = await program.methods
+      .createProposal(Array.from(descBuf))
+      .accounts({
+        proposer: wallet.keypair.publicKey,
+        governance,
+        proposerStake,
+        proposal,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return {
+      txSignature,
+      proposalId,
+      proposalPubkey: proposal.toBase58(),
+    };
+  }
+
+  async castVote(
+    agentId: string,
+    proposalId: number,
+    support: boolean,
+  ): Promise<ChainVoteResult> {
+    const st = this.requireStaking();
+    const gov = this.requireGovernance();
+    const wallet = this.agentWallets.get(agentId);
+    if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    const pool = new PublicKey(st.pool);
+    const governance = new PublicKey(gov.governance);
+    const [voterStake] = deriveStakeAccount(pool, wallet.keypair.publicKey);
+    const [proposal] = deriveProposal(governance, proposalId);
+    const [voteReceipt] = deriveVoteReceipt(proposal, wallet.keypair.publicKey);
+
+    const program = getGovernanceProgram(this.provider);
+    const txSignature = await program.methods
+      .castVote(support)
+      .accounts({
+        voter: wallet.keypair.publicKey,
+        governance,
+        proposal,
+        voterStake,
+        voteReceipt,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([wallet.keypair])
+      .rpc();
+
+    return { txSignature, proposalId, support };
   }
 }

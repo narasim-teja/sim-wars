@@ -5,6 +5,8 @@ import { pathsFor, RUNS_DIR } from "../ipc/paths";
 import { writeCommand } from "../ipc/command-reader";
 import type { SimulationConfig, AgentPersona, TickConfig } from "../types";
 import type { StatusSnapshot } from "../ipc/event-writer";
+import { buildLLMClient } from "../llm/factory";
+import { draftScenario } from "../scenarios/generator";
 
 interface SpawnedRun {
   simId: string;
@@ -83,6 +85,23 @@ function handleStatus(simId: string): Response {
   if (!existsSync(paths.statusFile)) return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
   const snap = JSON.parse(readFileSync(paths.statusFile, "utf-8")) as StatusSnapshot;
   return json(snap, { headers: corsHeaders() });
+}
+
+async function handleDraftScenario(req: Request): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as { goal?: string } | null;
+  if (!body || typeof body.goal !== "string" || body.goal.trim().length === 0) {
+    return json({ error: "goal is required" }, { status: 400, headers: corsHeaders() });
+  }
+  try {
+    const llm = buildLLMClient();
+    const draft = await draftScenario(llm, body.goal);
+    return json(draft, { headers: corsHeaders() });
+  } catch (e) {
+    return json(
+      { error: (e as Error).message },
+      { status: 500, headers: corsHeaders() },
+    );
+  }
 }
 
 function handleList(): Response {
@@ -190,6 +209,10 @@ const server = Bun.serve<WsData, never>({
       return handleCreate(req);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/scenarios/draft") {
+      return handleDraftScenario(req);
+    }
+
     const simMatch = url.pathname.match(/^\/api\/sim\/([^/]+)(?:\/(pause|resume|abort))?$/);
     if (simMatch) {
       const simId = simMatch[1]!;
@@ -214,10 +237,11 @@ const server = Bun.serve<WsData, never>({
 });
 
 console.log(`sim-wars API listening on http://localhost:${server.port}`);
-console.log(`  POST /api/sim              — create new run`);
-console.log(`  GET  /api/sim              — list runs`);
-console.log(`  GET  /api/sim/:id          — status snapshot`);
-console.log(`  POST /api/sim/:id/pause    — pause`);
-console.log(`  POST /api/sim/:id/resume   — resume`);
-console.log(`  POST /api/sim/:id/abort    — abort`);
-console.log(`  WS   /ws/sim/:id           — event stream (NDJSON)`);
+console.log(`  POST /api/sim                  — create new run`);
+console.log(`  GET  /api/sim                  — list runs`);
+console.log(`  GET  /api/sim/:id              — status snapshot`);
+console.log(`  POST /api/sim/:id/pause        — pause`);
+console.log(`  POST /api/sim/:id/resume       — resume`);
+console.log(`  POST /api/sim/:id/abort        — abort`);
+console.log(`  POST /api/scenarios/draft      — LLM-drafted SimulationConfig`);
+console.log(`  WS   /ws/sim/:id               — event stream (NDJSON)`);

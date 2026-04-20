@@ -12,15 +12,26 @@ import { StateManager } from "../tick/state-manager";
 import { SimDatabase } from "../db/database";
 import type { ChainExecutor } from "../chain/action-executor";
 import { InMemoryStore, type MemoryStore } from "./memory";
+import {
+  resolveVisibility,
+  orderAgentsForObservation,
+  DEFAULT_VISIBILITY_RULES,
+  DEFAULT_TARGET_RULES,
+  type VisibilityRule,
+} from "./visibility";
 
 export class AgentOrchestrator {
   private agents: Map<string, AgentState> = new Map();
+  /** Deterministic batch order used each tick (treasury → ... → insider → analyst). */
+  private orderedPersonaIds: string[] = [];
   private llm: LLMClient;
   private stateManager: StateManager;
   private db: SimDatabase;
   private simId: string;
   private chain: ChainExecutor | null;
   private memory: MemoryStore;
+  private visibilityRules: VisibilityRule[];
+  private targetRules: Record<string, { delay: number; fidelity: number }>;
 
   constructor(
     personas: AgentPersona[],
@@ -29,7 +40,9 @@ export class AgentOrchestrator {
     db: SimDatabase,
     simId: string,
     chain: ChainExecutor | null = null,
-    memory: MemoryStore = new InMemoryStore()
+    memory: MemoryStore = new InMemoryStore(),
+    visibilityRules: VisibilityRule[] = DEFAULT_VISIBILITY_RULES,
+    targetRules: Record<string, { delay: number; fidelity: number }> = DEFAULT_TARGET_RULES,
   ) {
     this.memory = memory;
     this.llm = llm;
@@ -37,6 +50,10 @@ export class AgentOrchestrator {
     this.db = db;
     this.simId = simId;
     this.chain = chain;
+    this.visibilityRules = visibilityRules;
+    this.targetRules = targetRules;
+
+    this.orderedPersonaIds = orderAgentsForObservation(personas).map((p) => p.id);
 
     // Initialize agent states from personas.
     // A1: personas can specify `stakedFraction` to start with tokens already staked,
@@ -85,13 +102,20 @@ export class AgentOrchestrator {
 
   /**
    * Process all agents for a single tick.
-   * Agents run in parallel batches.
+   * Agents run in parallel batches. Batch order is deterministic so
+   * visibility rules (insider sees treasury this tick, analyst publishes
+   * next tick) hold without race conditions across LLM latency.
    */
   async processTickBatch(
     sim: SimulationState,
     batchSize: number = 3
   ): Promise<AgentAction[]> {
-    const agentList = Array.from(this.agents.values());
+    // Drain any delayed observations whose visibility tick has arrived.
+    this.memory.advanceTick(sim.tick);
+
+    const agentList = this.orderedPersonaIds
+      .map((id) => this.agents.get(id))
+      .filter((a): a is AgentState => !!a);
     const allActions: AgentAction[] = [];
 
     for (let i = 0; i < agentList.length; i += batchSize) {
@@ -130,15 +154,19 @@ export class AgentOrchestrator {
         this.db.insertAgentState(this.simId, sim.tick, agent.persona.id, agent.holdings);
       }
 
-      // Update observed actions for subsequent batches
+      // Update observed actions for subsequent batches, honoring visibility rules.
       for (const action of allActions.slice(-batch.length)) {
-        if (action.action !== "hold") {
-          for (const agent of agentList) {
-            if (agent.persona.id !== action.agentId) {
-              this.memory.recordObservation(agent.persona.id, action);
-              agent.observedActions = this.memory.getRecentObservations(agent.persona.id, 10);
-            }
-          }
+        if (action.action === "hold") continue;
+        for (const observer of agentList) {
+          if (observer.persona.id === action.agentId) continue;
+          const { delay, fidelity, action: shaped } = resolveVisibility(
+            observer.persona.id,
+            action,
+            this.visibilityRules,
+            this.targetRules,
+          );
+          this.memory.recordObservation(observer.persona.id, shaped, { delay, fidelity });
+          observer.observedActions = this.memory.getRecentObservations(observer.persona.id, 10);
         }
       }
     }
@@ -319,6 +347,57 @@ export class AgentOrchestrator {
           success = false;
         }
         break;
+      }
+
+      case "propose": {
+        // Descriptions come out of the LLM's reasoning — keep the first sentence
+        // so the on-chain [u8; 64] field isn't overrun.
+        const description = (decision.reasoning || "proposal").slice(0, 63);
+        const proposal = this.stateManager.createProposal(agent.persona.id, description);
+        if (!proposal) {
+          success = false;
+          break;
+        }
+        let txSig: string | null = null;
+        if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasGovernance()) {
+          try {
+            const r = await this.chain.createProposal(agent.persona.id, proposal.id, description);
+            txSig = r.txSignature;
+          } catch (e) {
+            console.error(`  chain propose failed for ${agent.persona.id}:`, (e as Error).message);
+            // Keep local proposal; chain side will drift — flag for next sync.
+          }
+        }
+        this.stateManager.recordTrade(agent.persona.id, "propose", proposal.id);
+        return this.buildAction(agent, decision, sim, true, txSig);
+      }
+
+      case "vote_yes":
+      case "vote_no": {
+        const support = decision.action === "vote_yes";
+        const explicitId = decision.amount != null ? Math.floor(decision.amount) : null;
+        const latest = this.stateManager.getLatestActiveProposalId();
+        const proposalId = explicitId != null && explicitId >= 0 ? explicitId : latest;
+        if (proposalId == null) {
+          success = false;
+          break;
+        }
+        const voted = this.stateManager.castVote(agent.persona.id, proposalId, support);
+        if (!voted) {
+          success = false;
+          break;
+        }
+        let txSig: string | null = null;
+        if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasGovernance()) {
+          try {
+            const r = await this.chain.castVote(agent.persona.id, proposalId, support);
+            txSig = r.txSignature;
+          } catch (e) {
+            console.error(`  chain vote failed for ${agent.persona.id}:`, (e as Error).message);
+          }
+        }
+        this.stateManager.recordTrade(agent.persona.id, decision.action, proposalId);
+        return this.buildAction(agent, decision, sim, true, txSig);
       }
 
       case "hold":
