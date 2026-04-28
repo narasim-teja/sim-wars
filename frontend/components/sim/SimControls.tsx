@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Pause, Play, Square, Loader2 } from "lucide-react";
 import { controlSim } from "@/lib/api";
 import type { SimStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export function SimControls({ simId, status }: { simId: string; status: SimStatus }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -31,38 +31,62 @@ export function SimControls({ simId, status }: { simId: string; status: SimStatu
   return (
     <div className="flex items-center gap-1.5">
       {isPaused ? (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy != null || isTerminal}
+        <Btn
           onClick={() => send("resume")}
-          className="h-8 border-emerald-400/40 font-mono text-[10px] uppercase tracking-widest text-emerald-300 hover:bg-emerald-400/10"
-        >
-          {busy === "resume" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-          resume
-        </Button>
+          disabled={busy != null || isTerminal}
+          icon={busy === "resume" ? Loader2 : Play}
+          iconClass={busy === "resume" ? "animate-spin" : ""}
+          label="Resume"
+        />
       ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy != null || !isRunning}
+        <Btn
           onClick={() => send("pause")}
-          className="h-8 border-amber-400/40 font-mono text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-400/10"
-        >
-          {busy === "pause" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pause className="h-3 w-3" />}
-          pause
-        </Button>
+          disabled={busy != null || !isRunning}
+          icon={busy === "pause" ? Loader2 : Pause}
+          iconClass={busy === "pause" ? "animate-spin" : ""}
+          label="Pause"
+        />
       )}
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={busy != null || isTerminal}
+      <Btn
         onClick={() => send("abort")}
-        className="h-8 border-red-500/40 font-mono text-[10px] uppercase tracking-widest text-red-300 hover:bg-red-500/10"
-      >
-        {busy === "abort" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
-        abort
-      </Button>
+        disabled={busy != null || isTerminal}
+        icon={busy === "abort" ? Loader2 : Square}
+        iconClass={busy === "abort" ? "animate-spin" : ""}
+        label="Abort"
+        tone="danger"
+      />
     </div>
+  );
+}
+
+function Btn({
+  onClick,
+  disabled,
+  icon: Icon,
+  iconClass,
+  label,
+  tone = "default",
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ElementType;
+  iconClass?: string;
+  label: string;
+  tone?: "default" | "danger";
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex items-center gap-1 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.22em] transition-colors disabled:opacity-50",
+        tone === "danger"
+          ? "border-zinc-300 text-zinc-700 hover:border-red-400 hover:text-red-600"
+          : "border-zinc-300 text-zinc-700 hover:border-zinc-900 hover:text-zinc-900",
+      )}
+    >
+      <Icon className={cn("h-3 w-3", iconClass)} />
+      {label}
+    </button>
   );
 }

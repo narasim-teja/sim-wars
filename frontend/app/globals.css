@@ -49,38 +49,38 @@
 }
 
 :root {
-  --background: oklch(0.06 0.01 240);
-  --foreground: oklch(0.97 0.01 240);
-  --card: oklch(0.10 0.012 240);
-  --card-foreground: oklch(0.97 0.01 240);
-  --popover: oklch(0.10 0.012 240);
-  --popover-foreground: oklch(0.97 0.01 240);
-  --primary: oklch(0.85 0.18 195);
-  --primary-foreground: oklch(0.10 0.012 240);
-  --secondary: oklch(0.18 0.015 240);
-  --secondary-foreground: oklch(0.97 0.01 240);
-  --muted: oklch(0.16 0.012 240);
-  --muted-foreground: oklch(0.65 0.02 240);
-  --accent: oklch(0.22 0.04 280);
-  --accent-foreground: oklch(0.97 0.01 240);
-  --destructive: oklch(0.65 0.25 22);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.85 0.18 195);
-  --chart-1: oklch(0.85 0.18 195);   /* cyan */
-  --chart-2: oklch(0.75 0.20 145);   /* green */
-  --chart-3: oklch(0.78 0.20 80);    /* amber */
-  --chart-4: oklch(0.70 0.22 22);    /* red */
-  --chart-5: oklch(0.70 0.22 305);   /* magenta */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.14 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.14 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.14 0 0);
+  --primary: oklch(0.14 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.14 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.50 0 0);
+  --accent: oklch(0.96 0 0);
+  --accent-foreground: oklch(0.14 0 0);
+  --destructive: oklch(0.60 0.22 22);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.65 0 0);
+  --chart-1: oklch(0.70 0.18 35);     /* orange */
+  --chart-2: oklch(0.60 0.20 240);    /* blue */
+  --chart-3: oklch(0.65 0.20 145);    /* green */
+  --chart-4: oklch(0.55 0 0);         /* gray */
+  --chart-5: oklch(0.70 0.22 305);    /* magenta */
   --radius: 0.5rem;
-  --sidebar: oklch(0.08 0.012 240);
-  --sidebar-foreground: oklch(0.97 0.01 240);
-  --sidebar-primary: oklch(0.85 0.18 195);
-  --sidebar-primary-foreground: oklch(0.10 0.012 240);
-  --sidebar-accent: oklch(0.18 0.015 240);
-  --sidebar-accent-foreground: oklch(0.97 0.01 240);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.85 0.18 195);
+  --sidebar: oklch(0.99 0 0);
+  --sidebar-foreground: oklch(0.14 0 0);
+  --sidebar-primary: oklch(0.14 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.96 0 0);
+  --sidebar-accent-foreground: oklch(0.14 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.65 0 0);
 }
 
 @layer base {
@@ -88,94 +88,69 @@
     @apply border-border outline-ring/50;
   }
   html, body {
-    background: #04060a;
+    background: #ffffff;
     color: var(--foreground);
   }
   html {
     @apply font-sans;
   }
-  body {
-    background-image:
-      radial-gradient(ellipse 80% 50% at 20% 0%, oklch(0.20 0.10 200 / 18%), transparent 60%),
-      radial-gradient(ellipse 60% 40% at 100% 100%, oklch(0.20 0.10 305 / 14%), transparent 60%),
-      linear-gradient(180deg, #04060a, #03050a);
-    background-attachment: fixed;
-  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/* MiroFish-style flair                                                       */
+/* MiroFish-inspired flair — light edition                                    */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-.glow-cyan {
-  box-shadow: 0 0 24px oklch(0.85 0.18 195 / 25%), inset 0 0 12px oklch(0.85 0.18 195 / 10%);
-}
-
-.text-glow-cyan {
-  text-shadow: 0 0 12px oklch(0.85 0.18 195 / 60%);
-}
-
-.text-glow-red {
-  text-shadow: 0 0 12px oklch(0.70 0.22 22 / 70%);
-}
-
-.text-glow-green {
-  text-shadow: 0 0 12px oklch(0.75 0.20 145 / 60%);
-}
-
-.scanlines::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent 0,
-    transparent 2px,
-    oklch(1 0 0 / 2%) 2px,
-    oklch(1 0 0 / 2%) 3px
-  );
-  pointer-events: none;
-  z-index: 1;
+/* Subtle dotted background for the graph canvas (light mode). */
+.dot-bg {
+  background-image: radial-gradient(circle at center, #e5e5e5 1px, transparent 1.5px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
 }
 
 .grid-bg {
   background-image:
-    linear-gradient(oklch(1 0 0 / 4%) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(1 0 0 / 4%) 1px, transparent 1px);
+    linear-gradient(#f4f4f5 1px, transparent 1px),
+    linear-gradient(90deg, #f4f4f5 1px, transparent 1px);
   background-size: 32px 32px;
   background-position: -1px -1px;
 }
 
-.panel {
-  background: linear-gradient(180deg, oklch(0.10 0.012 240 / 80%), oklch(0.07 0.012 240 / 80%));
-  border: 1px solid oklch(1 0 0 / 6%);
-  backdrop-filter: blur(10px);
+/* Section "01 / 02" big number prefix used in MiroFish. */
+.section-number {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #0a0a0a;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.85 0.18 195 / 50%); }
-  50%      { box-shadow: 0 0 0 8px oklch(0.85 0.18 195 / 0%); }
+/* Black terminal strip pinned to the bottom of the dashboard. */
+.terminal {
+  background: #0a0a0a;
+  color: #d4d4d8;
+  font-family: var(--font-mono, ui-monospace, monospace);
 }
 
-.pulse-glow {
-  animation: pulse-glow 1.6s ease-out infinite;
+@keyframes blink-cursor {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.85; }
-}
-
-.flicker {
-  animation: flicker 2.8s ease-in-out infinite;
+.blink-cursor {
+  animation: blink-cursor 1s steps(2, jump-none) infinite;
 }
 
 /* Hide default scrollbars but keep scrolling */
 .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .thin-scroll::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 14%);
+  background: rgba(0, 0, 0, 0.18);
   border-radius: 3px;
 }
 .thin-scroll::-webkit-scrollbar-thumb:hover {
-  background: oklch(1 0 0 / 22%);
+  background: rgba(0, 0, 0, 0.30);
+}
+.thin-scroll-dark::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scroll-dark::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
 }

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tokenomics War Game",
-  description: "Adversarial LLM agent stress-tests for token economies",
+  title: "Sim Wars · Adversarial tokenomics simulation",
+  description: "Upload your tokenomics. 20 LLM-powered adversaries stress-test it on Solana devnet.",
 };
 
 export default function RootLayout({
@@ -25,9 +25,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
+      <body className="min-h-full bg-white text-foreground font-sans">
         {children}
       </body>
     </html>

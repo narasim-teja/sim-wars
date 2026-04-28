@@ -18,30 +18,34 @@ export function MetricsBar({ state, tick }: { state: SimulationState | null; tic
       : null;
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-      <Stat label="TICK" value={`${tick}`} accent="cyan" />
+    <div className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+      <Stat label="Tick" value={`${tick}`} />
       <Stat
-        label="PRICE"
+        label="Price"
         value={`$${formatNum(price, 4)}`}
-        accent={price > 1 ? "green" : price < 0.5 ? "red" : "amber"}
+        accent={price > 1 ? "good" : price < 0.5 ? "bad" : "warn"}
       />
-      <Stat label="GINI" value={gini.toFixed(3)} accent={gini > 0.7 ? "red" : gini > 0.6 ? "amber" : "green"} />
-      <Stat label="STAKED" value={`${stakedRatio.toFixed(1)}%`} accent="cyan" />
-      <Stat label="APY" value={`${apy.toFixed(1)}%`} accent={apy > 15 ? "amber" : "green"} />
+      <Stat
+        label="Gini"
+        value={gini.toFixed(3)}
+        accent={gini > 0.7 ? "bad" : gini > 0.6 ? "warn" : "good"}
+      />
+      <Stat label="Staked" value={`${stakedRatio.toFixed(1)}%`} />
+      <Stat label="APY" value={`${apy.toFixed(1)}%`} accent={apy > 15 ? "warn" : "good"} />
       {peg != null ? (
         <Stat
-          label="PEG"
+          label="Peg"
           value={peg.toFixed(4)}
-          accent={peg < 0.95 ? "red" : peg < 0.99 ? "amber" : "green"}
+          accent={peg < 0.95 ? "bad" : peg < 0.99 ? "warn" : "good"}
         />
       ) : reserveDepleted != null ? (
         <Stat
-          label="RESERVE DRAIN"
+          label="Reserve drain"
           value={`${reserveDepleted.toFixed(1)}%`}
-          accent={reserveDepleted > 70 ? "red" : reserveDepleted > 30 ? "amber" : "green"}
+          accent={reserveDepleted > 70 ? "bad" : reserveDepleted > 30 ? "warn" : "good"}
         />
       ) : (
-        <Stat label="POOL" value={formatBig(state?.poolReserveB ?? 0)} accent="cyan" />
+        <Stat label="Pool" value={formatBig(state?.poolReserveB ?? 0)} />
       )}
     </div>
   );
@@ -54,19 +58,18 @@ function Stat({
 }: {
   label: string;
   value: string;
-  accent: "cyan" | "green" | "red" | "amber";
+  accent?: "good" | "warn" | "bad";
 }) {
-  const cls = {
-    cyan:  "text-cyan-300 [text-shadow:0_0_10px_rgba(34,211,238,0.4)]",
-    green: "text-emerald-300 [text-shadow:0_0_10px_rgba(52,211,153,0.4)]",
-    red:   "text-red-400 [text-shadow:0_0_10px_rgba(239,68,68,0.5)]",
-    amber: "text-amber-300 [text-shadow:0_0_10px_rgba(251,191,36,0.4)]",
-  }[accent];
+  const valueCls = {
+    good: "text-zinc-900",
+    warn: "text-amber-600",
+    bad: "text-red-600",
+  }[accent ?? "good"];
 
   return (
-    <div className="panel rounded px-3 py-2">
-      <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-zinc-500">{label}</div>
-      <div className={cn("mt-1 font-mono text-lg font-semibold tabular-nums", cls)}>{value}</div>
+    <div className="flex flex-col gap-0.5 border-l-2 border-zinc-200 pl-3">
+      <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</span>
+      <span className={cn("text-[18px] font-semibold tabular-nums", valueCls)}>{value}</span>
     </div>
   );
 }

@@ -21,8 +21,8 @@ interface LinkDatum extends d3.SimulationLinkDatum<NodeDatum> {
   age: number;
 }
 
-const NODE_RADIUS_MIN = 8;
-const NODE_RADIUS_MAX = 28;
+const NODE_RADIUS_MIN = 9;
+const NODE_RADIUS_MAX = 30;
 
 export function AgentGraph({
   state,
@@ -56,12 +56,12 @@ export function AgentGraph({
   useEffect(() => {
     const sim = d3
       .forceSimulation<NodeDatum>([])
-      .force("charge", d3.forceManyBody().strength(-220))
+      .force("charge", d3.forceManyBody().strength(-260))
       .force("center", d3.forceCenter(size.w / 2, size.h / 2))
-      .force("collide", d3.forceCollide<NodeDatum>().radius((d) => radiusFor(d.balance) + 4))
+      .force("collide", d3.forceCollide<NodeDatum>().radius((d) => radiusFor(d.balance) + 6))
       .force(
         "link",
-        d3.forceLink<NodeDatum, LinkDatum>([]).id((d) => d.id).distance(120).strength(0.05),
+        d3.forceLink<NodeDatum, LinkDatum>([]).id((d) => d.id).distance(140).strength(0.05),
       )
       .alphaDecay(0.03);
 
@@ -84,7 +84,6 @@ export function AgentGraph({
       lastActionTick: a.lastAction?.tick,
     }));
 
-    // Reuse existing position so the graph doesn't jump on every tick
     const reused = incoming.map((n) => {
       const prev = nodesRef.current.get(n.id);
       return prev ? { ...prev, ...n } : n;
@@ -104,7 +103,6 @@ export function AgentGraph({
     return { nodes: reused, links, maxBalance: maxB };
   }, [state.agents, state.edges, state.tick]);
 
-  // Apply nodes/links to simulation
   useEffect(() => {
     if (!simRef.current) return;
     const sim = simRef.current;
@@ -113,30 +111,30 @@ export function AgentGraph({
     sim.alpha(0.5).restart();
   }, [nodes, links]);
 
-  // Render loop — draw to SVG via D3 selection
   useEffect(() => {
     if (!svgRef.current || !simRef.current) return;
     const svg = d3.select(svgRef.current);
     const sim = simRef.current;
 
-    // Defs (gradients + glow)
     let defs = svg.select<SVGDefsElement>("defs");
     if (defs.empty()) {
       defs = svg.append("defs");
       const filter = defs
         .append("filter")
-        .attr("id", "node-glow")
+        .attr("id", "node-soft-shadow")
         .attr("x", "-50%")
         .attr("y", "-50%")
         .attr("width", "200%")
         .attr("height", "200%");
-      filter.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "blur");
-      const merge = filter.append("feMerge");
-      merge.append("feMergeNode").attr("in", "blur");
-      merge.append("feMergeNode").attr("in", "SourceGraphic");
+      filter
+        .append("feDropShadow")
+        .attr("dx", 0)
+        .attr("dy", 1)
+        .attr("stdDeviation", 1.4)
+        .attr("flood-color", "rgba(0,0,0,0.18)");
     }
 
-    // Links (under nodes)
+    // Edges
     const linkSel = svg
       .selectAll<SVGLineElement, LinkDatum>("line.edge")
       .data(links, (d) => d.id);
@@ -148,22 +146,19 @@ export function AgentGraph({
       .attr("stroke-width", 1.4)
       .attr("opacity", 0)
       .attr("stroke-linecap", "round");
-    linkEnter
-      .transition()
-      .duration(180)
-      .attr("opacity", 0.85);
+    linkEnter.transition().duration(180).attr("opacity", 0.85);
     const allLinks = linkEnter.merge(linkSel);
     allLinks
       .attr("stroke", (d) => edgeColor(d.action as never))
       .attr("opacity", (d) => {
         const fade = Math.max(0, 1 - d.age / 4);
-        return 0.2 + 0.6 * fade;
+        return 0.25 + 0.55 * fade;
       })
       .attr("stroke-dasharray", (d) =>
         d.action === "vote_yes" || d.action === "vote_no" || d.action === "propose" ? "4 3" : null,
       );
 
-    // Nodes group
+    // Nodes
     const nodeSel = svg
       .selectAll<SVGGElement, NodeDatum>("g.node")
       .data(nodes, (d) => d.id);
@@ -175,23 +170,26 @@ export function AgentGraph({
       .attr("class", "node")
       .style("cursor", "pointer")
       .on("click", (_, d) => onSelect(d.id));
+
     nodeEnter
       .append("circle")
       .attr("class", "halo")
       .attr("r", 0)
       .attr("fill", "transparent")
-      .attr("stroke-width", 1.2)
+      .attr("stroke-width", 1.5)
       .attr("opacity", 0);
+
     nodeEnter
       .append("circle")
       .attr("class", "core")
-      .attr("filter", "url(#node-glow)")
+      .attr("filter", "url(#node-soft-shadow)")
       .attr("r", 0)
       .attr("opacity", 0)
       .transition()
       .duration(220)
       .attr("opacity", 1)
       .attr("r", (d) => radiusFor(d.balance, maxBalance));
+
     nodeEnter
       .append("text")
       .attr("text-anchor", "middle")
@@ -200,20 +198,20 @@ export function AgentGraph({
       .style("font-size", "9px")
       .style("font-weight", "600")
       .style("pointer-events", "none")
-      .style("fill", "rgba(0,0,0,0.85)")
+      .style("fill", "#ffffff")
       .text((d) => initialsFor(d.id));
 
     const allNodes = nodeEnter.merge(nodeSel);
     allNodes
       .select<SVGCircleElement>("circle.core")
       .attr("fill", (d) => AGENT_COLORS[d.type] ?? "#71717a")
-      .attr("stroke", (d) => (selectedAgentId === d.id ? "#22d3ee" : "rgba(0,0,0,0.4)"))
-      .attr("stroke-width", (d) => (selectedAgentId === d.id ? 2.5 : 1))
+      .attr("stroke", (d) => (selectedAgentId === d.id ? "#0a0a0a" : "#ffffff"))
+      .attr("stroke-width", (d) => (selectedAgentId === d.id ? 3 : 2))
       .transition()
       .duration(220)
       .attr("r", (d) => radiusFor(d.balance, maxBalance));
 
-    // Halo pulse if last action is recent (within 1 tick)
+    // Halo pulse on recent action
     allNodes
       .select<SVGCircleElement>("circle.halo")
       .attr("stroke", (d) => AGENT_COLORS[d.type] ?? "#71717a")
@@ -222,16 +220,15 @@ export function AgentGraph({
         const sel = d3.select(this);
         if (recent) {
           sel
-            .attr("opacity", 0.7)
+            .attr("opacity", 0.55)
             .attr("r", radiusFor(d.balance, maxBalance) + 2)
             .transition()
             .duration(900)
-            .attr("r", radiusFor(d.balance, maxBalance) + 22)
+            .attr("r", radiusFor(d.balance, maxBalance) + 26)
             .attr("opacity", 0);
         }
       });
 
-    // Tick handler — update positions
     sim.on("tick", () => {
       allLinks
         .attr("x1", (d) => (d.source as NodeDatum).x ?? 0)
@@ -242,36 +239,43 @@ export function AgentGraph({
     });
   }, [nodes, links, maxBalance, selectedAgentId, onSelect, state.tick]);
 
+  const usedTypes = useMemo(
+    () => Array.from(new Set(nodes.map((n) => n.type))).filter((t) => t !== "unknown"),
+    [nodes],
+  );
+
   return (
-    <div ref={containerRef} className="relative h-full w-full">
+    <div ref={containerRef} className="dot-bg relative h-full w-full bg-white">
+      <div className="absolute left-4 top-3 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+        Graph Relationship Visualization
+      </div>
+
       <svg ref={svgRef} className="absolute inset-0 h-full w-full" viewBox={`0 0 ${size.w} ${size.h}`} />
 
-      {/* Empty state */}
       {nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <div className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-600">
+          <div className="font-mono text-[12px] uppercase tracking-[0.3em] text-zinc-400">
             waiting for first tick…
           </div>
         </div>
       )}
 
       {/* Legend */}
-      <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-md flex-wrap gap-1.5 rounded border border-white/5 bg-black/60 p-2 backdrop-blur">
-        {Object.entries(AGENT_LABELS)
-          .filter(([k]) => k !== "unknown")
-          .filter(([k]) => nodes.some((n) => n.type === k))
-          .map(([k, label]) => (
-            <div key={k} className="flex items-center gap-1.5 px-1">
+      <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-md flex-col gap-1.5 rounded-md border border-zinc-200 bg-white/95 p-3 backdrop-blur">
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">Entity types</div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+          {usedTypes.map((k) => (
+            <div key={k} className="flex items-center gap-1.5">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{
-                  background: AGENT_COLORS[k as keyof typeof AGENT_COLORS],
-                  boxShadow: `0 0 6px ${AGENT_COLORS[k as keyof typeof AGENT_COLORS]}`,
-                }}
+                style={{ background: AGENT_COLORS[k as keyof typeof AGENT_COLORS] }}
               />
-              <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400">{label}</span>
+              <span className="font-mono text-[10px] text-zinc-700">
+                {AGENT_LABELS[k as keyof typeof AGENT_LABELS]}
+              </span>
             </div>
           ))}
+        </div>
       </div>
     </div>
   );
