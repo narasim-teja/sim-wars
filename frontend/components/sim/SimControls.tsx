@@ -79,7 +79,7 @@ function Btn({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-1 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.22em] transition-colors disabled:opacity-50",
+        "flex cursor-pointer items-center gap-1 rounded border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.22em] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         tone === "danger"
           ? "border-zinc-300 text-zinc-700 hover:border-red-400 hover:text-red-600"
           : "border-zinc-300 text-zinc-700 hover:border-zinc-900 hover:text-zinc-900",

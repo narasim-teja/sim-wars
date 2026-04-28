@@ -124,7 +124,7 @@ export default function Home() {
                       setMaxTicks(s.defaultMaxTicks);
                     }}
                     className={cn(
-                      "flex flex-col gap-1.5 rounded-md border bg-white p-4 text-left transition-all",
+                      "flex cursor-pointer flex-col gap-1.5 rounded-md border bg-white p-4 text-left transition-all",
                       active
                         ? "border-zinc-900 shadow-[0_0_0_3px_rgba(24,24,27,0.06)]"
                         : "border-zinc-200 hover:border-zinc-400",
@@ -246,7 +246,7 @@ export default function Home() {
               onClick={launch}
               disabled={launching}
               className={cn(
-                "mt-2 flex h-12 items-center justify-center gap-2 rounded bg-zinc-900 font-mono text-[12px] uppercase tracking-[0.25em] text-white transition-colors hover:bg-zinc-800 disabled:opacity-60",
+                "mt-2 flex h-12 cursor-pointer items-center justify-center gap-2 rounded bg-zinc-900 font-mono text-[12px] uppercase tracking-[0.25em] text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60",
               )}
             >
               {launching ? (

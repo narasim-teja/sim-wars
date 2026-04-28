@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { AgentRuntime } from "@/lib/types";
 import { AGENT_COLORS, AGENT_LABELS, edgeColor } from "@/lib/agent-colors";
 import type { SimUiState } from "@/hooks/useSimulation";
+import { GraphHeader, LivePill } from "./GraphHeader";
 
 interface NodeDatum extends d3.SimulationNodeDatum {
   id: string;
@@ -36,10 +37,13 @@ export function AgentGraph({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const simRef = useRef<d3.Simulation<NodeDatum, LinkDatum> | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const nodesRef = useRef<Map<string, NodeDatum>>(new Map());
   const [size, setSize] = useState({ w: 800, h: 600 });
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Track container size
+  // ─── container size ──────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver((entries) => {
@@ -52,16 +56,23 @@ export function AgentGraph({
     return () => ro.disconnect();
   }, []);
 
-  // Create / reuse simulation
+  // ─── fullscreen tracking ─────────────────────────────────────────────
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // ─── force simulation ────────────────────────────────────────────────
   useEffect(() => {
     const sim = d3
       .forceSimulation<NodeDatum>([])
-      .force("charge", d3.forceManyBody().strength(-260))
+      .force("charge", d3.forceManyBody().strength(-280))
       .force("center", d3.forceCenter(size.w / 2, size.h / 2))
-      .force("collide", d3.forceCollide<NodeDatum>().radius((d) => radiusFor(d.balance) + 6))
+      .force("collide", d3.forceCollide<NodeDatum>().radius((d) => radiusFor(d.balance) + 8))
       .force(
         "link",
-        d3.forceLink<NodeDatum, LinkDatum>([]).id((d) => d.id).distance(140).strength(0.05),
+        d3.forceLink<NodeDatum, LinkDatum>([]).id((d) => d.id).distance(150).strength(0.05),
       )
       .alphaDecay(0.03);
 
@@ -71,7 +82,7 @@ export function AgentGraph({
     };
   }, [size.w, size.h]);
 
-  // Build nodes & links from state
+  // ─── nodes & links ──────────────────────────────────────────────────
   const { nodes, links, maxBalance } = useMemo(() => {
     const agents = Object.values(state.agents);
     const balances = agents.map((a) => a.balance);
@@ -111,11 +122,13 @@ export function AgentGraph({
     sim.alpha(0.5).restart();
   }, [nodes, links]);
 
+  // ─── render ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!svgRef.current || !simRef.current) return;
     const svg = d3.select(svgRef.current);
     const sim = simRef.current;
 
+    // Lazy init: defs + zoomable root group
     let defs = svg.select<SVGDefsElement>("defs");
     if (defs.empty()) {
       defs = svg.append("defs");
@@ -134,8 +147,36 @@ export function AgentGraph({
         .attr("flood-color", "rgba(0,0,0,0.18)");
     }
 
-    // Edges
-    const linkSel = svg
+    let root = svg.select<SVGGElement>("g.zoom-root");
+    if (root.empty()) {
+      root = svg.append("g").attr("class", "zoom-root");
+      root.append("g").attr("class", "edges");
+      root.append("g").attr("class", "edge-labels");
+      root.append("g").attr("class", "nodes");
+      root.append("g").attr("class", "node-labels");
+
+      // d3.zoom — pan/zoom the root group
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.25, 5])
+        .filter((event) => {
+          // ignore zoom on right-click + on pinch from a node drag
+          return !event.button && !event.ctrlKey;
+        })
+        .on("zoom", (event) => {
+          root.attr("transform", event.transform.toString());
+        });
+      svg.call(zoom);
+      zoomRef.current = zoom;
+    }
+
+    const edgesG = root.select<SVGGElement>("g.edges");
+    const edgeLabelsG = root.select<SVGGElement>("g.edge-labels");
+    const nodesG = root.select<SVGGElement>("g.nodes");
+    const nodeLabelsG = root.select<SVGGElement>("g.node-labels");
+
+    // ─── Edges
+    const linkSel = edgesG
       .selectAll<SVGLineElement, LinkDatum>("line.edge")
       .data(links, (d) => d.id);
     linkSel.exit().remove();
@@ -158,8 +199,31 @@ export function AgentGraph({
         d.action === "vote_yes" || d.action === "vote_no" || d.action === "propose" ? "4 3" : null,
       );
 
-    // Nodes
-    const nodeSel = svg
+    // ─── Edge labels (action name in middle)
+    const edgeLabelSel = edgeLabelsG
+      .selectAll<SVGTextElement, LinkDatum>("text.edge-label")
+      .data(showEdgeLabels ? links : [], (d) => d.id);
+    edgeLabelSel.exit().remove();
+    const edgeLabelEnter = edgeLabelSel
+      .enter()
+      .append("text")
+      .attr("class", "edge-label")
+      .attr("text-anchor", "middle")
+      .attr("dy", "0.32em")
+      .style("font-family", "ui-monospace, monospace")
+      .style("font-size", "9px")
+      .style("font-weight", "600")
+      .style("pointer-events", "none")
+      .style("paint-order", "stroke")
+      .style("stroke", "#ffffff")
+      .style("stroke-width", "3px");
+    const allEdgeLabels = edgeLabelEnter.merge(edgeLabelSel);
+    allEdgeLabels
+      .style("fill", (d) => edgeColor(d.action as never))
+      .text((d) => d.action.toUpperCase().replace(/_/g, " "));
+
+    // ─── Nodes
+    const nodeSel = nodesG
       .selectAll<SVGGElement, NodeDatum>("g.node")
       .data(nodes, (d) => d.id);
     nodeSel.exit().remove();
@@ -169,7 +233,10 @@ export function AgentGraph({
       .append("g")
       .attr("class", "node")
       .style("cursor", "pointer")
-      .on("click", (_, d) => onSelect(d.id));
+      .on("click", (event, d) => {
+        event.stopPropagation();
+        onSelect(d.id);
+      });
 
     nodeEnter
       .append("circle")
@@ -211,7 +278,6 @@ export function AgentGraph({
       .duration(220)
       .attr("r", (d) => radiusFor(d.balance, maxBalance));
 
-    // Halo pulse on recent action
     allNodes
       .select<SVGCircleElement>("circle.halo")
       .attr("stroke", (d) => AGENT_COLORS[d.type] ?? "#71717a")
@@ -229,16 +295,107 @@ export function AgentGraph({
         }
       });
 
+    // ─── Drag — reposition nodes by dragging
+    const drag = d3
+      .drag<SVGGElement, NodeDatum>()
+      .on("start", (event, d) => {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      })
+      .on("drag", (event, d) => {
+        d.fx = event.x;
+        d.fy = event.y;
+      })
+      .on("end", (event, d) => {
+        if (!event.active) sim.alphaTarget(0);
+        // Release the pin so the layout can keep settling
+        d.fx = null;
+        d.fy = null;
+      });
+    allNodes.call(drag as never);
+
+    // ─── Node labels (small id under the circle)
+    const nodeLabelSel = nodeLabelsG
+      .selectAll<SVGTextElement, NodeDatum>("text.node-label")
+      .data(nodes, (d) => d.id);
+    nodeLabelSel.exit().remove();
+    const nodeLabelEnter = nodeLabelSel
+      .enter()
+      .append("text")
+      .attr("class", "node-label")
+      .attr("text-anchor", "middle")
+      .style("font-family", "ui-monospace, monospace")
+      .style("font-size", "10px")
+      .style("font-weight", "500")
+      .style("pointer-events", "none")
+      .style("paint-order", "stroke")
+      .style("stroke", "#ffffff")
+      .style("stroke-width", "3px")
+      .style("fill", "#3f3f46");
+    const allNodeLabels = nodeLabelEnter.merge(nodeLabelSel);
+    allNodeLabels.text((d) => d.id);
+
+    // ─── Tick handler
     sim.on("tick", () => {
       allLinks
         .attr("x1", (d) => (d.source as NodeDatum).x ?? 0)
         .attr("y1", (d) => (d.source as NodeDatum).y ?? 0)
         .attr("x2", (d) => (d.target as NodeDatum).x ?? 0)
         .attr("y2", (d) => (d.target as NodeDatum).y ?? 0);
-      allNodes.attr("transform", (d) => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
-    });
-  }, [nodes, links, maxBalance, selectedAgentId, onSelect, state.tick]);
 
+      allEdgeLabels
+        .attr("x", (d) => {
+          const s = (d.source as NodeDatum).x ?? 0;
+          const t = (d.target as NodeDatum).x ?? 0;
+          return (s + t) / 2;
+        })
+        .attr("y", (d) => {
+          const s = (d.source as NodeDatum).y ?? 0;
+          const t = (d.target as NodeDatum).y ?? 0;
+          return (s + t) / 2;
+        });
+
+      allNodes.attr("transform", (d) => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
+      allNodeLabels
+        .attr("x", (d) => d.x ?? 0)
+        .attr("y", (d) => (d.y ?? 0) + radiusFor(d.balance, maxBalance) + 12);
+    });
+
+    // ─── Click background to deselect
+    svg.on("click.bg", (event) => {
+      if (event.target === svgRef.current) onSelect(null);
+    });
+  }, [nodes, links, maxBalance, selectedAgentId, onSelect, state.tick, showEdgeLabels]);
+
+  // ─── Header callbacks ────────────────────────────────────────────────
+  const handleRefresh = useCallback(() => {
+    if (svgRef.current && zoomRef.current) {
+      d3.select(svgRef.current)
+        .transition()
+        .duration(400)
+        .call(zoomRef.current.transform, d3.zoomIdentity);
+    }
+    if (simRef.current) {
+      // Release any pinned positions and rekick
+      for (const n of nodes) {
+        n.fx = null;
+        n.fy = null;
+      }
+      simRef.current.alpha(0.9).restart();
+    }
+  }, [nodes]);
+
+  const handleFullscreen = useCallback(async () => {
+    if (!containerRef.current) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await containerRef.current.requestFullscreen();
+    }
+  }, []);
+
+  // ─── Render ──────────────────────────────────────────────────────────
   const usedTypes = useMemo(
     () => Array.from(new Set(nodes.map((n) => n.type))).filter((t) => t !== "unknown"),
     [nodes],
@@ -246,11 +403,19 @@ export function AgentGraph({
 
   return (
     <div ref={containerRef} className="dot-bg relative h-full w-full bg-white">
-      <div className="absolute left-4 top-3 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+      <div className="absolute left-4 top-3 z-10 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
         Graph Relationship Visualization
       </div>
 
-      <svg ref={svgRef} className="absolute inset-0 h-full w-full" viewBox={`0 0 ${size.w} ${size.h}`} />
+      <GraphHeader
+        onRefresh={handleRefresh}
+        onFullscreen={handleFullscreen}
+        isFullscreen={isFullscreen}
+        showEdgeLabels={showEdgeLabels}
+        onToggleEdgeLabels={() => setShowEdgeLabels((v) => !v)}
+      />
+
+      <svg ref={svgRef} className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing" viewBox={`0 0 ${size.w} ${size.h}`} />
 
       {nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -260,8 +425,10 @@ export function AgentGraph({
         </div>
       )}
 
+      <LivePill status={state.status} />
+
       {/* Legend */}
-      <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-md flex-col gap-1.5 rounded-md border border-zinc-200 bg-white/95 p-3 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex max-w-md flex-col gap-1.5 rounded-md border border-zinc-200 bg-white/95 p-3 backdrop-blur">
         <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">Entity types</div>
         <div className="flex flex-wrap gap-x-3 gap-y-1.5">
           {usedTypes.map((k) => (
@@ -276,6 +443,11 @@ export function AgentGraph({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Help text — bottom right */}
+      <div className="pointer-events-none absolute bottom-3 right-3 z-10 rounded-md border border-zinc-200 bg-white/90 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 backdrop-blur">
+        scroll = zoom · drag = pan · click node
       </div>
     </div>
   );

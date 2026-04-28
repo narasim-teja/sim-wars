@@ -39,7 +39,11 @@ export function NodeDetails({
           >
             {AGENT_LABELS[agent.type]}
           </span>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="cursor-pointer rounded p-0.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>

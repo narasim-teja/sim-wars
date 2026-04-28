@@ -19,7 +19,7 @@ export function AgentFeed({ feed, onSelect }: { feed: FeedEntry[]; onSelect: (id
         </div>
         <button
           onClick={() => setPinned(pinned ? null : [...feed])}
-          className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600 hover:border-zinc-400"
+          className="flex cursor-pointer items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
         >
           {pinned ? (
             <>

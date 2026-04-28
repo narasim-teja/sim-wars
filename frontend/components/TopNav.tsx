@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowLeft, ArrowUpRight } from "lucide-react";
 
 export type ViewMode = "graph" | "split" | "workbench";
 
@@ -19,21 +19,34 @@ export function TopNav({
   onViewChange,
   step,
   status,
+  back,
 }: {
   view?: ViewMode;
   onViewChange?: (v: ViewMode) => void;
   step?: number;
   status?: string;
+  back?: string;
 }) {
   const current = STEPS.find((s) => s.idx === step);
 
   return (
     <header className="relative z-30 flex items-center justify-between border-b border-zinc-200 bg-white/95 px-6 py-3 backdrop-blur">
-      <Link href="/" className="flex items-center gap-2">
-        <span className="font-mono text-base font-semibold tracking-[0.32em] text-zinc-900">
-          SIMWARS
-        </span>
-      </Link>
+      <div className="flex items-center gap-3">
+        {back && (
+          <Link
+            href={back}
+            aria-label="Back"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        )}
+        <Link href="/" className="flex items-center gap-2">
+          <span className="font-mono text-base font-semibold tracking-[0.32em] text-zinc-900">
+            SIMWARS
+          </span>
+        </Link>
+      </div>
 
       {view && onViewChange ? (
         <ViewTabs value={view} onChange={onViewChange} />
@@ -83,7 +96,7 @@ function ViewTabs({ value, onChange }: { value: ViewMode; onChange: (v: ViewMode
             key={t.id}
             onClick={() => onChange(t.id)}
             className={cn(
-              "rounded px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors",
+              "cursor-pointer rounded px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors",
               active
                 ? "bg-zinc-900 text-white"
                 : "text-zinc-500 hover:text-zinc-900",

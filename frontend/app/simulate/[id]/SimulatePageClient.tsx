@@ -33,7 +33,7 @@ export function SimulatePageClient({ simId }: { simId: string }) {
   // Step 3 = "Simulate"
   return (
     <div className="flex h-screen min-h-screen flex-col overflow-hidden bg-white">
-      <TopNav view={view} onViewChange={setView} step={3} status={sim.status} />
+      <TopNav view={view} onViewChange={setView} step={3} status={sim.status} back="/" />
 
       {/* Sub-bar: sim id + connection + metrics + controls */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 bg-white px-6 py-2">
@@ -215,7 +215,7 @@ function RosterList({
           <button
             key={a.id}
             onClick={() => onSelect(a.id)}
-            className="flex items-center gap-2 rounded border border-zinc-100 bg-white px-3 py-1.5 text-left hover:border-zinc-300"
+            className="flex cursor-pointer items-center gap-2 rounded border border-zinc-100 bg-white px-3 py-1.5 text-left hover:border-zinc-300 hover:bg-zinc-50"
           >
             <span
               className="h-2.5 w-2.5 rounded-full"
