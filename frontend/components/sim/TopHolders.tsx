@@ -26,8 +26,8 @@ export function TopHolders({ state }: { state: SimulationState | null }) {
 
   return (
     <div className="grid grid-cols-[140px_1fr] gap-3">
-      <div className="h-32 w-full">
-        <ResponsiveContainer>
+      <div className="h-32 w-full min-w-0">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <PieChart>
             <Pie data={data} dataKey="value" innerRadius={28} outerRadius={56} paddingAngle={2} stroke="#ffffff" strokeWidth={2}>
               {data.map((d, i) => (

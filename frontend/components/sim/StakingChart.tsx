@@ -7,8 +7,8 @@ export function StakingChart({ series }: { series: SimSeriesPoint[] }) {
   const data = series.map((p) => ({ tick: p.tick, staked: p.staked * 100, apy: p.apy }));
 
   return (
-    <div className="h-32">
-      <ResponsiveContainer>
+    <div className="h-32 w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="stakeFill" x1="0" y1="0" x2="0" y2="1">

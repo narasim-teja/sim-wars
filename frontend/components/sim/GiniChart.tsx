@@ -6,8 +6,8 @@ import type { SimSeriesPoint } from "@/hooks/useSimulation";
 export function GiniChart({ series }: { series: SimSeriesPoint[] }) {
   const data = series.map((p) => ({ tick: p.tick, gini: p.gini }));
   return (
-    <div className="h-32">
-      <ResponsiveContainer>
+    <div className="h-32 w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
           <XAxis dataKey="tick" tick={{ fontSize: 9, fill: "#a1a1aa", fontFamily: "monospace" }} stroke="#e4e4e7" />
           <YAxis
