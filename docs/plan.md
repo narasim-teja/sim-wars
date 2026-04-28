@@ -504,39 +504,45 @@ Total: ~14h / 2 days. Buys us clean footing for the rest of Phase 2.
 
 ---
 
-### Phase 2 — Full Sim + UI (Week 2)
+### Phase 2 — Full Sim + UI (Week 2) ✅ DONE (2026-04-28)
 **Goal: All 20 agents running, live dashboard looks stunning**
 
-**Days 1-2: Full Agent Roster**
-- Implement all 20 agent personas with distinct system prompts
-- Batch parallelism (4 batches of 5, Promise.all)
-- Agent memory (SQLite per-agent, last 10 actions)
-- Inter-agent observation (agents see others' recent large actions)
-- Coordinate attack detection (whale + governance attacker collude)
+**Days 1-2: Full Agent Roster** ✅
+- [x] Implement all 20 agent personas with distinct system prompts ([sim-engine/src/agents/personas.ts](../sim-engine/src/agents/personas.ts))
+- [x] Batch parallelism via `LLMClient.generateBatch` + primary/boost router ([sim-engine/src/llm/routing-client.ts](../sim-engine/src/llm/routing-client.ts))
+- [x] Agent memory (SQLite per-agent + InMemoryStore) ([sim-engine/src/agents/memory.ts](../sim-engine/src/agents/memory.ts))
+- [x] Inter-agent observation w/ visibility rules (INSIDER, ANALYST delays) ([sim-engine/src/agents/visibility.ts](../sim-engine/src/agents/visibility.ts))
+- [x] Coordinated-attack detection (`coordinationEdges` in state) ([sim-engine/src/metrics/coordination.ts](../sim-engine/src/metrics/coordination.ts))
+- [x] On-chain staking + governance wired via `ChainExecutor` ([sim-engine/src/chain/action-executor.ts](../sim-engine/src/chain/action-executor.ts))
+- [x] LLM-drafted scenario generator (`POST /api/scenarios/draft`) ([sim-engine/src/scenarios/generator.ts](../sim-engine/src/scenarios/generator.ts))
 
-**Days 3-4: Frontend — Agent Graph**
-- D3 force-directed graph
-- 20 nodes, color-coded by type
-- Animated edges on tx (red=sell, green=buy, purple=governance)
-- Node size = holdings (dynamic)
-- Click node → agent detail panel (reasoning log, wallet, tx history)
-- Dark theme, MiroFish aesthetic
+**Days 3-4: Frontend — Agent Graph** ✅
+- [x] D3 force-directed graph w/ pan + zoom + node-drag ([frontend/components/sim/AgentGraph.tsx](../frontend/components/sim/AgentGraph.tsx))
+- [x] 20 nodes, color-coded by persona type
+- [x] Animated edges on tx (red=sell/unstake, green=buy/stake, purple=governance), fade over 3 ticks
+- [x] Node size = holdings (dynamic from `topHolders`)
+- [x] Click node → floating NodeDetails card (reasoning log, recent actions, type pill)
+- [x] **Light** MiroFish aesthetic (white bg, dotted canvas, mono labels)
+- [x] Graph header: Refresh / Edge Labels toggle / Fullscreen ([frontend/components/sim/GraphHeader.tsx](../frontend/components/sim/GraphHeader.tsx))
 
-**Days 5-6: Frontend — Metrics Dashboard**
-- Real-time price chart (WebSocket updates)
-- Gini coefficient over time
-- Staking ratio %
-- Governance power pie chart
-- Live action feed (scrolling, color-coded by agent type)
-- Threat level indicator (green/yellow/red/DEATH SPIRAL)
-- Simulation console (terminal-style logs)
+**Days 5-6: Frontend — Metrics Dashboard** ✅
+- [x] Real-time price chart (Recharts + WS-driven series) ([frontend/components/sim/PriceChart.tsx](../frontend/components/sim/PriceChart.tsx))
+- [x] Gini coefficient over time w/ 0.6/0.7 threshold lines ([frontend/components/sim/GiniChart.tsx](../frontend/components/sim/GiniChart.tsx))
+- [x] Staking ratio % + APY readout ([frontend/components/sim/StakingChart.tsx](../frontend/components/sim/StakingChart.tsx))
+- [x] Top-holders donut + concentration % ([frontend/components/sim/TopHolders.tsx](../frontend/components/sim/TopHolders.tsx))
+- [x] Live action feed, color-coded by agent type, click to inspect ([frontend/components/sim/AgentFeed.tsx](../frontend/components/sim/AgentFeed.tsx))
+- [x] Threat indicator: STABLE → WATCH → ELEVATED → CRITICAL → DEATH SPIRAL ([frontend/components/sim/ThreatIndicator.tsx](../frontend/components/sim/ThreatIndicator.tsx))
+- [x] Black bottom-strip SYSTEM DASHBOARD terminal (always visible) ([frontend/components/sim/SystemDashboard.tsx](../frontend/components/sim/SystemDashboard.tsx))
+- [x] MiroFish-style numbered SectionCards on the right rail (`01 Live state`, `02 Price/Gini`, …) ([frontend/components/sim/SectionCard.tsx](../frontend/components/sim/SectionCard.tsx))
 
-**Day 7: WebSocket Integration**
-- Bun WebSocket server broadcasts state every tick
-- Next.js client consumes, updates all charts simultaneously
-- Test with 20 agents, verify no lag
+**Day 7: WebSocket Integration** ✅
+- [x] Bun WebSocket server broadcasts NDJSON events per tick (replays history on connect) ([sim-engine/src/api/server.ts](../sim-engine/src/api/server.ts))
+- [x] Next.js client consumes via `useSimulation` reducer hook ([frontend/hooks/useSimulation.ts](../frontend/hooks/useSimulation.ts))
+- [x] Top-nav with `Graph / Split / Workbench` view tabs + Step progress + ← back button ([frontend/components/TopNav.tsx](../frontend/components/TopNav.tsx))
+- [x] Pause / resume / abort controls wired to `/api/sim/:id/{cmd}` ([frontend/components/sim/SimControls.tsx](../frontend/components/sim/SimControls.tsx))
+- [x] End-to-end smoke: 20-agent LUNA scenario completes through WS, dashboard renders 200 with all sections
 
-**Deliverable**: Full 20-agent sim running live. Dashboard looks stunning. Step progress bar working. Demo-ready.
+**Deliverable**: Full 20-agent sim running live. Dashboard ships. Demo-ready against `LLM_PROVIDER=mock` and Ollama (Qwen3 8B local). 36/36 sim-engine tests pass · `bunx tsc --noEmit` + `bunx next build` clean. **Outstanding for Phase 3**: 3-min Loom demo + on-chain run on Solana devnet/testnet (engine path exists; actual deploy + Loom slip into Phase 3 polish).
 
 ---
 
