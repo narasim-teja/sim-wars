@@ -179,6 +179,46 @@ export class SimDatabase {
     }));
   }
 
+  /**
+   * Aggregate action counts for a run, broken down by action type and on-chain
+   * status. Used by the report generator to surface "X% landed on Solana"
+   * + per-action proof. Successful holds are excluded since they generate no
+   * tx and aren't interesting for chain-activity claims.
+   */
+  getActionStats(simId: string): {
+    totalSuccessful: number;
+    totalOnChain: number;
+    byAction: { action: string; successful: number; onChain: number }[];
+  } {
+    const rows = this.db
+      .prepare(
+        `SELECT
+           action,
+           SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful,
+           SUM(CASE WHEN success = 1 AND tx_signature IS NOT NULL THEN 1 ELSE 0 END) AS on_chain
+         FROM agent_actions
+         WHERE sim_id = ?
+         GROUP BY action`,
+      )
+      .all(simId) as { action: string; successful: number; on_chain: number }[];
+    let totalSuccessful = 0;
+    let totalOnChain = 0;
+    const byAction: { action: string; successful: number; onChain: number }[] = [];
+    for (const r of rows) {
+      // `hold` is intentionally excluded from the chain-activity numerator —
+      // it's a no-op by design and would dilute the on-chain percentage.
+      if (r.action === "hold") {
+        totalSuccessful += r.successful;
+        continue;
+      }
+      totalSuccessful += r.successful;
+      totalOnChain += r.on_chain;
+      byAction.push({ action: r.action, successful: r.successful, onChain: r.on_chain });
+    }
+    byAction.sort((a, b) => b.successful - a.successful);
+    return { totalSuccessful, totalOnChain, byAction };
+  }
+
   getTickStates(simId: string): SimulationState[] {
     const rows = this.db
       .prepare("SELECT state FROM tick_states WHERE sim_id = ? ORDER BY tick")

@@ -20,6 +20,31 @@ export type WorkerEvent =
   | { kind: "chain:deploy:progress"; ts: number; simId: string; step: string; message: string }
   | { kind: "chain:deploy:complete"; ts: number; simId: string; programs: string[] }
   | { kind: "chain:deploy:error"; ts: number; simId: string; message: string }
+  | {
+      kind: "chain:prestake:start";
+      ts: number;
+      simId: string;
+      total: number;
+    }
+  | {
+      kind: "chain:prestake:progress";
+      ts: number;
+      simId: string;
+      agentId: string;
+      current: number;
+      total: number;
+      succeeded: number;
+      failed: number;
+    }
+  | {
+      kind: "chain:prestake:complete";
+      ts: number;
+      simId: string;
+      total: number;
+      succeeded: number;
+      failed: number;
+      durationMs: number;
+    }
   | { kind: "error"; ts: number; tick: number | null; message: string }
   | { kind: "log"; ts: number; level: "info" | "warn" | "error"; message: string };
 

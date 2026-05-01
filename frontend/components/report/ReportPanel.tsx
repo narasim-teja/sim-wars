@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Copy, Download, ExternalLink } from "lucide-react";
-import type { SimulationReport, ResilienceGrade } from "@/lib/report";
+import type { SimulationReport, ResilienceGrade, ChainActivity } from "@/lib/report";
 import { cn } from "@/lib/utils";
 
 const GRADE_COLOR: Record<ResilienceGrade, { bg: string; ring: string; fg: string }> = {
@@ -108,7 +108,7 @@ export function ReportPanel({
       )}
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Initial price"  value={`$${formatN(report.meta.initialPrice)}`} />
         <Stat label="Final price"    value={`$${formatN(report.meta.finalPrice)}`} delta={report.meta.pricePctChange} />
         <Stat label="Final Gini"     value={report.meta.finalGini.toFixed(3)} />
@@ -116,6 +116,15 @@ export function ReportPanel({
           label="Reserve survival"
           value={report.meta.finalReservePct == null ? "n/a" : `${report.meta.finalReservePct.toFixed(1)}%`}
         />
+        {report.chainActivity ? (
+          <Stat
+            label="On-chain"
+            value={`${report.chainActivity.onChainPct.toFixed(1)}%`}
+            sub={`${report.chainActivity.totalOnChain} / ${report.chainActivity.totalSuccessful} actions`}
+          />
+        ) : (
+          <Stat label="On-chain" value="off" sub="in-memory AMM only" />
+        )}
       </div>
 
       <Section number="01" title="Executive summary" subtitle="What happened">
@@ -259,8 +268,18 @@ export function ReportPanel({
         )}
       </Section>
 
+      {report.chainActivity && (
+        <Section
+          number="06"
+          title="On-chain activity"
+          subtitle={`${report.chainActivity.totalOnChain} of ${report.chainActivity.totalSuccessful} actions submitted to Solana`}
+        >
+          <ChainActivityBlock activity={report.chainActivity} />
+        </Section>
+      )}
+
       <Section
-        number="06"
+        number={report.chainActivity ? "07" : "06"}
         title="Comparison to historical collapses"
         subtitle="similarity heuristic"
       >
@@ -280,7 +299,11 @@ export function ReportPanel({
       </Section>
 
       {report.narrative && (
-        <Section number="07" title="Raw model narrative" subtitle="LLM transcript (debug / advanced)">
+        <Section
+          number={report.chainActivity ? "08" : "07"}
+          title="Raw model narrative"
+          subtitle="LLM transcript (debug / advanced)"
+        >
           <pre className="thin-scroll whitespace-pre-wrap break-words rounded border border-zinc-200 bg-zinc-50 p-3 font-mono text-[11px] leading-5 text-zinc-700">
             {report.narrative}
           </pre>
@@ -320,12 +343,20 @@ function Section({
   );
 }
 
-function Stat({ label, value, delta }: { label: string; value: string; delta?: number }) {
+function Stat({
+  label, value, delta, sub,
+}: {
+  label: string;
+  value: string;
+  delta?: number;
+  /** Optional sub-label rendered when there's no `delta` to show. */
+  sub?: string;
+}) {
   return (
     <div className="flex flex-col gap-1 rounded-md border border-zinc-200 bg-white p-3">
       <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</span>
       <span className="text-[18px] font-semibold tabular-nums text-zinc-900">{value}</span>
-      {delta !== undefined && (
+      {delta !== undefined ? (
         <span
           className={cn(
             "font-mono text-[11px] tabular-nums",
@@ -334,7 +365,9 @@ function Stat({ label, value, delta }: { label: string; value: string; delta?: n
         >
           {delta > 0 ? "+" : ""}{delta.toFixed(2)}%
         </span>
-      )}
+      ) : sub ? (
+        <span className="font-mono text-[11px] text-zinc-500">{sub}</span>
+      ) : null}
     </div>
   );
 }
@@ -345,6 +378,178 @@ function Empty({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+/**
+ * On-chain activity block: shows the on-chain percentage, per-action
+ * landing rate, and explorer links for the deployed mints + programs.
+ *
+ * Cluster-aware: localnet has no public explorer so we surface raw
+ * addresses with a "copy" affordance instead of dead links. Devnet /
+ * mainnet build https://explorer.solana.com/?cluster=… links.
+ */
+function ChainActivityBlock({ activity }: { activity: ChainActivity }) {
+  const pct = activity.onChainPct;
+  const palette =
+    pct >= 90
+      ? "text-emerald-700"
+      : pct >= 70
+        ? "text-lime-700"
+        : pct >= 40
+          ? "text-amber-800"
+          : "text-red-700";
+  const isLocal = activity.explorerBase == null;
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Headline: percentage + cluster */}
+      <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-md border border-zinc-200 bg-white p-3">
+        <div className="flex items-baseline gap-3">
+          <span className={cn("text-3xl font-bold tabular-nums", palette)}>{pct.toFixed(1)}%</span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+            of {activity.totalSuccessful} non-hold actions landed on Solana
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isLocal ? "bg-zinc-400" : "bg-emerald-500",
+            )}
+          />
+          {isLocal ? "localnet (no explorer)" : "explorer linked"}
+          <span className="ml-2 text-zinc-400">·</span>
+          <span className="font-mono text-[10px] normal-case tracking-normal text-zinc-600">
+            {truncateMid(activity.cluster, 36)}
+          </span>
+        </div>
+      </div>
+
+      {/* Per-action breakdown table */}
+      {activity.byAction.length > 0 && (
+        <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-zinc-200 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                <th className="px-3 py-1.5">action</th>
+                <th className="px-3 py-1.5 text-right">attempted</th>
+                <th className="px-3 py-1.5 text-right">on-chain</th>
+                <th className="px-3 py-1.5 text-right">rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activity.byAction.map((row) => {
+                const rate = row.successful > 0 ? (row.onChain / row.successful) * 100 : 0;
+                return (
+                  <tr key={row.action} className="border-b border-zinc-100 font-mono text-[12px] last:border-b-0">
+                    <td className="px-3 py-1.5 font-semibold text-zinc-900">{row.action}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-zinc-700">{row.successful}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-zinc-900">{row.onChain}</td>
+                    <td
+                      className={cn(
+                        "px-3 py-1.5 text-right tabular-nums",
+                        rate >= 90 ? "text-emerald-700" : rate >= 50 ? "text-amber-700" : "text-red-700",
+                      )}
+                    >
+                      {rate.toFixed(0)}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Deployed programs + mints — explorer links if cluster supports them */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ChainArtifactList
+          title="Programs"
+          rows={activity.programs}
+          explorerBase={activity.explorerBase}
+        />
+        <ChainArtifactList
+          title="Mints + pool"
+          rows={[
+            ...activity.mints,
+            ...(activity.pool ? [{ name: "AMM pool", address: activity.pool.address }] : []),
+          ]}
+          explorerBase={activity.explorerBase}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ChainArtifactList({
+  title,
+  rows,
+  explorerBase,
+}: {
+  title: string;
+  rows: { name: string; address: string }[];
+  explorerBase: string | null;
+}) {
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(null), 1200);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-zinc-200 bg-white p-3">
+      <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">{title}</span>
+      <ul className="flex flex-col gap-1">
+        {rows.map((row) => {
+          const href = explorerBase ? buildExplorerUrl(explorerBase, row.address) : null;
+          return (
+            <li key={row.address} className="flex items-center gap-2 font-mono text-[11px]">
+              <span className="w-20 shrink-0 text-zinc-600">{row.name}</span>
+              <span className="flex-1 truncate text-zinc-900">{truncateMid(row.address, 24)}</span>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(row.address);
+                  setCopied(row.address);
+                }}
+                className="cursor-pointer rounded px-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-900"
+                title="Copy address"
+              >
+                {copied === row.address ? "copied" : "copy"}
+              </button>
+              {href && (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-500 hover:text-emerald-700"
+                  title="Open in Solana Explorer"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Build an explorer URL that preserves the cluster query param if the base
+ * already has one (devnet/testnet). For mainnet the base ends with `/`.
+ */
+function buildExplorerUrl(base: string, address: string): string {
+  if (base.includes("?cluster=")) {
+    const [path, query] = base.split("?");
+    return `${path.replace(/\/$/, "")}/address/${address}?${query}`;
+  }
+  return `${base.replace(/\/$/, "")}/address/${address}`;
+}
+
+function truncateMid(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const half = Math.floor((max - 1) / 2);
+  return `${s.slice(0, half)}…${s.slice(-half)}`;
 }
 
 /**

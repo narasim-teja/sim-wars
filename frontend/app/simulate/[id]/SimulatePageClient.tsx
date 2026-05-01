@@ -96,6 +96,31 @@ export function SimulatePageClient({ simId }: { simId: string }) {
         </div>
       )}
 
+      {sim.prestake && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-200 bg-amber-50 px-6 py-2 font-mono text-[11px] text-amber-900">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span className="uppercase tracking-[0.2em]">pre-stake</span>
+          <span className="tabular-nums">
+            {sim.prestake.current} / {sim.prestake.total}
+          </span>
+          {/* Inline progress bar */}
+          <div className="h-1.5 w-32 overflow-hidden rounded-full bg-amber-200">
+            <div
+              className="h-full bg-amber-700 transition-[width]"
+              style={{ width: `${sim.prestake.total > 0 ? (sim.prestake.current / sim.prestake.total) * 100 : 0}%` }}
+            />
+          </div>
+          {sim.prestake.failed > 0 && (
+            <span className="text-red-700 normal-case tracking-normal">
+              ({sim.prestake.failed} failed)
+            </span>
+          )}
+          <span className="truncate normal-case tracking-normal text-amber-700">
+            initializing on-chain stake_accounts so propose / vote will land
+          </span>
+        </div>
+      )}
+
       {/* Main */}
       <div className="grid min-h-0 flex-1 overflow-hidden" style={{
         gridTemplateColumns:

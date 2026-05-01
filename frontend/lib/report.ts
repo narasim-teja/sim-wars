@@ -43,6 +43,18 @@ export interface HistoricalComparison {
   reasoning: string;
 }
 
+export interface ChainActivity {
+  cluster: string;
+  explorerBase: string | null;
+  totalSuccessful: number;
+  totalOnChain: number;
+  onChainPct: number;
+  byAction: { action: string; successful: number; onChain: number }[];
+  programs: { name: string; address: string }[];
+  mints: { name: string; address: string }[];
+  pool: { address: string } | null;
+}
+
 export interface SimulationReport {
   simId: string;
   meta: {
@@ -68,6 +80,8 @@ export interface SimulationReport {
   attackVectors: AttackVector[];
   recommendations: Recommendation[];
   comparison: HistoricalComparison | null;
+  /** Optional — present when the run was on-chain and a deployment was found. */
+  chainActivity?: ChainActivity | null;
   narrative: string;
 }
 

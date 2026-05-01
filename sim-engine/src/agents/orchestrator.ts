@@ -20,6 +20,17 @@ import {
   type VisibilityRule,
 } from "./visibility";
 
+/**
+ * Progress event emitted by `AgentOrchestrator.init()` during the on-chain
+ * pre-stake phase. Worker forwards these to the IPC event stream so the UI
+ * can render a per-tick progress bar instead of dead air at status=running,
+ * tick=0.
+ */
+export type PreStakeProgressEvent =
+  | { phase: "start"; total: number }
+  | { phase: "tick"; agentId: string; current: number; total: number; succeeded: number; failed: number }
+  | { phase: "complete"; total: number; succeeded: number; failed: number; durationMs: number };
+
 export class AgentOrchestrator {
   private agents: Map<string, AgentState> = new Map();
   /** Deterministic batch order used each tick (treasury → ... → insider → analyst). */
@@ -105,16 +116,18 @@ export class AgentOrchestrator {
 
   /**
    * Bulk-stake on-chain for every persona that arrived with `stakedFraction > 0`.
-   * The constructor already updates the in-memory StateManager with these
-   * pre-stakes, but the on-chain `stake_account` PDAs don't exist until we
-   * call the staking program — and `createProposal` later requires that PDA
-   * to be initialized AND have a non-zero balance.
+   * Each call hits initializeStakeAccount + stake (two txs). At 91 agents ×
+   * 50% pre-staked that's ~90 txs; concurrency 20 finishes in ~5s on localnet.
    *
-   * Run with bounded concurrency: each call hits initializeStakeAccount + stake
-   * (two txs). At 91 agents × 50% pre-staked × 2 txs each that's ~90 txs;
-   * concurrency 20 finishes in ~5s on localnet.
+   * `onProgress` is called once when work starts ({ phase: "start" }), once
+   * per completed agent ({ phase: "tick", current, total, succeeded, failed }),
+   * and once when finished ({ phase: "complete", … }). The worker hooks this
+   * up to an IPC event so the UI can render "pre-staking 49/84…" instead of
+   * a 5-second silence.
    */
-  async init(): Promise<void> {
+  async init(opts?: {
+    onProgress?: (event: PreStakeProgressEvent) => void;
+  }): Promise<void> {
     if (!this.chain || !this.chain.hasStaking()) return;
     const toStake: { agentId: string; amount: number }[] = [];
     for (const [id, agent] of this.agents) {
@@ -125,6 +138,7 @@ export class AgentOrchestrator {
     if (toStake.length === 0) return;
 
     console.log(`[orchestrator] pre-staking ${toStake.length} agents on-chain…`);
+    opts?.onProgress?.({ phase: "start", total: toStake.length });
     const t0 = Date.now();
     const concurrency = Math.max(1, Math.min(toStake.length, Number(process.env.SIM_PRESTAKE_CONCURRENCY) || 20));
     let cursor = 0;
@@ -143,18 +157,31 @@ export class AgentOrchestrator {
           } catch (e) {
             failed++;
             const err = e as Error;
-            // Print first 400 chars + the first stack line so the failure mode
-            // is identifiable. "Assertion failed" alone is useless; we need the
-            // anchor error code or the program log.
             const msg = err.message ?? String(err);
             const stack0 = (err.stack ?? "").split("\n").find((l) => l.includes(".ts:") || l.includes(".js:")) ?? "";
             console.warn(`  [pre-stake] ${agentId} (${amount}) failed: ${msg.slice(0, 400)}\n    at ${stack0.trim()}`);
           }
+          opts?.onProgress?.({
+            phase: "tick",
+            agentId,
+            current: succeeded + failed,
+            total: toStake.length,
+            succeeded,
+            failed,
+          });
         }
       })());
     }
     await Promise.all(workers);
-    console.log(`[orchestrator] pre-staked ${succeeded}/${toStake.length} agents in ${Date.now() - t0}ms (${failed} failed)`);
+    const durationMs = Date.now() - t0;
+    console.log(`[orchestrator] pre-staked ${succeeded}/${toStake.length} agents in ${durationMs}ms (${failed} failed)`);
+    opts?.onProgress?.({
+      phase: "complete",
+      total: toStake.length,
+      succeeded,
+      failed,
+      durationMs,
+    });
   }
 
   /**

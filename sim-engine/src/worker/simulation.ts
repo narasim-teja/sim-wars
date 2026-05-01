@@ -1,6 +1,6 @@
 import { TickController } from "../tick/tick-controller";
 import { StateManager } from "../tick/state-manager";
-import { AgentOrchestrator } from "../agents/orchestrator";
+import { AgentOrchestrator, type PreStakeProgressEvent } from "../agents/orchestrator";
 import { SimDatabase } from "../db/database";
 import { LunaScenarioController } from "../scenarios/luna-controller";
 import { ChainExecutor } from "../chain/action-executor";
@@ -28,6 +28,8 @@ export interface RunSimulationOptions {
   onComplete?: (summary: { totalTicks: number; deathSpiralDetected: boolean; finalPrice: number; initialPrice: number }) => void;
   /** Return `true` between ticks to pause, `false` to proceed, `"abort"` to stop. */
   shouldPause?: () => Promise<false | true | "abort"> | (false | true | "abort");
+  /** Called during the on-chain pre-stake phase. Worker forwards to IPC. */
+  onPreStakeProgress?: (event: PreStakeProgressEvent) => void;
 }
 
 export interface RunSimulationResult {
@@ -62,7 +64,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   // Bulk pre-stake on-chain for personas with stakedFraction > 0 so their
   // stake_account PDAs exist before any agent issues a `propose` action.
   // No-op when chain or staking program isn't deployed.
-  await orchestrator.init();
+  await orchestrator.init({ onProgress: opts.onPreStakeProgress });
 
   let lunaController: LunaScenarioController | null = null;
   if (config.stablecoin?.enabled) {

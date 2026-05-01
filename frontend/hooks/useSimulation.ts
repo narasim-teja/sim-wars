@@ -53,6 +53,12 @@ export interface SimUiState {
   /** Set true when a chain:deploy:start arrives, reset when chain:deploy:complete fires. */
   chainDeploying: boolean;
   chainDeployStatus: string | null;
+  /**
+   * Pre-stake progress snapshot. Populated between `chain:prestake:start`
+   * and `chain:prestake:complete` so the UI can render "pre-staking 49/84…"
+   * during the otherwise-silent ~5-10s window between deploy and tick 0.
+   */
+  prestake: { current: number; total: number; succeeded: number; failed: number } | null;
 }
 
 const SERIES_CAP = 200;
@@ -90,6 +96,7 @@ function initialState(): SimUiState {
     reportGrade: null,
     chainDeploying: false,
     chainDeployStatus: null,
+    prestake: null,
   };
 }
 
@@ -291,6 +298,40 @@ function reducer(state: SimUiState, action: Action): SimUiState {
         chainDeploying: false,
         chainDeployStatus: `error: ${ev.message}`,
         logs: pushLog(state.logs, "error", `on-chain deploy failed: ${ev.message}`),
+      };
+
+    case "chain:prestake:start":
+      return {
+        ...state,
+        prestake: { current: 0, total: ev.total, succeeded: 0, failed: 0 },
+        logs: pushLog(state.logs, "system", `pre-staking ${ev.total} agents on-chain…`),
+      };
+
+    case "chain:prestake:progress":
+      return {
+        ...state,
+        prestake: {
+          current: ev.current,
+          total: ev.total,
+          succeeded: ev.succeeded,
+          failed: ev.failed,
+        },
+        // No log line per agent — would flood the console at concurrency 20
+        // with hundreds of agents. The UI reads `state.prestake` for the
+        // progress bar instead.
+      };
+
+    case "chain:prestake:complete":
+      return {
+        ...state,
+        // Keep the final snapshot visible briefly, then null'd by the next
+        // tick:start to free vertical space.
+        prestake: null,
+        logs: pushLog(
+          state.logs,
+          ev.failed > 0 ? "warn" : "system",
+          `pre-staked ${ev.succeeded}/${ev.total} agents in ${ev.durationMs}ms${ev.failed > 0 ? ` (${ev.failed} failed)` : ""}`,
+        ),
       };
 
     default:

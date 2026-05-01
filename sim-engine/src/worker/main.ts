@@ -101,6 +101,31 @@ async function main() {
       onDeathSpiral: (tick) => {
         events.emit({ kind: "sim:death_spiral", ts: Date.now(), simId, tick });
       },
+      onPreStakeProgress: (ev) => {
+        const ts = Date.now();
+        if (ev.phase === "start") {
+          events.emit({ kind: "chain:prestake:start", ts, simId, total: ev.total });
+        } else if (ev.phase === "tick") {
+          events.emit({
+            kind: "chain:prestake:progress",
+            ts, simId,
+            agentId: ev.agentId,
+            current: ev.current,
+            total: ev.total,
+            succeeded: ev.succeeded,
+            failed: ev.failed,
+          });
+        } else {
+          events.emit({
+            kind: "chain:prestake:complete",
+            ts, simId,
+            total: ev.total,
+            succeeded: ev.succeeded,
+            failed: ev.failed,
+            durationMs: ev.durationMs,
+          });
+        }
+      },
       shouldPause: () => {
         drainCommands();
         if (aborted) return "abort";

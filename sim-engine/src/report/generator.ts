@@ -27,7 +27,10 @@ import type {
   Recommendation,
   HistoricalComparison,
   ResilienceGrade,
+  ChainActivity,
 } from "./types";
+import { existsSync, readFileSync } from "node:fs";
+import { perRunDeploymentPath, type Deployment } from "../chain/sdk";
 
 export interface GenerateReportOptions {
   simId: string;
@@ -60,6 +63,11 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
   for (const persona of agents) {
     actionsByAgent.set(persona.id, db.getAgentHistory(simId, persona.id, 200));
   }
+
+  // Chain-activity proof. Only populated when a deployment manifest exists
+  // for this sim (i.e. the run was on-chain). Null otherwise — the frontend
+  // hides the section.
+  const chainActivity = computeChainActivity(simId, db);
 
   const meta = computeMeta({
     simId,
@@ -168,8 +176,76 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     attackVectors: llmAttackVectors,
     recommendations,
     comparison: llmComparison ?? comparison,
+    chainActivity,
     narrative,
   };
+}
+
+/**
+ * Build the `chainActivity` block by joining the on-chain deployment manifest
+ * (program IDs, mints, pool) with the per-action submission counts from the
+ * SimDatabase. Returns null when:
+ *   - no per-run `deployment.json` exists (run was not on-chain), or
+ *   - the manifest fails to parse (deploy script crashed mid-flight).
+ *
+ * The deployment manifest is loaded explicitly from the per-run path rather
+ * than via `loadDeployment()` — the latter would also fall back to the legacy
+ * top-level `.local/deployment.json`, which is stale across sim sessions.
+ */
+function computeChainActivity(simId: string, db: SimDatabase): ChainActivity | null {
+  const manifestPath = perRunDeploymentPath(simId);
+  if (!existsSync(manifestPath)) return null;
+  let dep: Deployment;
+  try {
+    dep = JSON.parse(readFileSync(manifestPath, "utf-8")) as Deployment;
+  } catch {
+    return null;
+  }
+
+  const stats = db.getActionStats(simId);
+  const onChainPct = stats.totalSuccessful > 0
+    ? Math.round((stats.totalOnChain / stats.totalSuccessful) * 1000) / 10
+    : 0;
+
+  const programs: { name: string; address: string }[] = [
+    { name: "token_mint", address: dep.programs.tokenMint },
+    { name: "amm_dex", address: dep.programs.ammDex },
+  ];
+  if (dep.programs.staking) programs.push({ name: "staking", address: dep.programs.staking });
+  if (dep.programs.governance) programs.push({ name: "governance", address: dep.programs.governance });
+
+  const mints = [
+    { name: "LUNA", address: dep.mints.luna },
+    { name: "UST", address: dep.mints.ust },
+  ];
+
+  return {
+    cluster: dep.cluster,
+    explorerBase: explorerBaseFor(dep.cluster),
+    totalSuccessful: stats.totalSuccessful,
+    totalOnChain: stats.totalOnChain,
+    onChainPct,
+    byAction: stats.byAction,
+    programs,
+    mints,
+    pool: dep.pool ? { address: dep.pool.address } : null,
+  };
+}
+
+/**
+ * Best-effort mapping from RPC URL → block-explorer base URL.
+ * Localnet is intentionally null because Solana Explorer doesn't surface
+ * tx data for ephemeral test-validator instances.
+ */
+function explorerBaseFor(rpcUrl: string): string | null {
+  if (rpcUrl.includes("127.0.0.1") || rpcUrl.includes("localhost")) return null;
+  if (rpcUrl.includes("devnet")) return "https://explorer.solana.com/?cluster=devnet";
+  if (rpcUrl.includes("testnet")) return "https://explorer.solana.com/?cluster=testnet";
+  if (rpcUrl.includes("helius")) {
+    // Helius mainnet endpoints don't put "mainnet" in the URL — assume mainnet.
+    return "https://explorer.solana.com/";
+  }
+  return "https://explorer.solana.com/";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

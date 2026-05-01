@@ -63,6 +63,30 @@ export interface HistoricalComparison {
   reasoning: string;
 }
 
+/**
+ * On-chain activity fingerprint. Set when the run was launched with
+ * `onChain: true` and a deployment manifest exists; null otherwise.
+ *
+ * The frontend uses this to render verifiable "actually ran on Solana"
+ * proof — explorer links for the deployed mints/programs and a per-action
+ * count of how many submissions had a real tx_signature attached.
+ */
+export interface ChainActivity {
+  cluster: string;
+  /** Best-effort explorer base URL inferred from `cluster`; null on unknowns. */
+  explorerBase: string | null;
+  /** Total successful actions excluding `hold`. */
+  totalSuccessful: number;
+  /** Successful actions that landed on chain (tx_signature IS NOT NULL). */
+  totalOnChain: number;
+  /** 0–100. (totalOnChain / totalSuccessful) × 100, rounded to 1 dp. */
+  onChainPct: number;
+  byAction: { action: string; successful: number; onChain: number }[];
+  programs: { name: string; address: string }[];
+  mints: { name: string; address: string }[];
+  pool: { address: string } | null;
+}
+
 export interface SimulationReport {
   simId: string;
   /** Engine-derived metadata captured at report time. */
@@ -91,6 +115,8 @@ export interface SimulationReport {
   attackVectors: AttackVector[];
   recommendations: Recommendation[];
   comparison: HistoricalComparison | null;
+  /** Optional — present when the run was on-chain and a deployment was found. */
+  chainActivity?: ChainActivity | null;
   /**
    * Raw LLM text. Helpful when the structured fields look thin and the user
    * wants the model's full take.
