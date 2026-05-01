@@ -48,18 +48,17 @@ export function ReportPanel({
             Sim-wars · post-mortem
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Resilience report</h1>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-zinc-500">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] text-zinc-500">
             <span>sim {report.simId.slice(0, 12)}</span>
             <span>·</span>
-            <span>{report.meta.totalTicks} ticks</span>
+            <span>{report.meta.totalTicks} ticks · {report.meta.agentCount} agents</span>
             <span>·</span>
             <span className={report.meta.deathSpiralDetected ? "text-red-700" : "text-zinc-500"}>
               status: {report.meta.finalStatus}
             </span>
             <span>·</span>
             <span>{new Date(report.meta.generatedAtMs).toLocaleString()}</span>
-            <span>·</span>
-            <span>llm: {report.meta.llmModel}</span>
+            <LLMBadge model={report.meta.llmModel} />
           </div>
         </div>
 
@@ -345,6 +344,34 @@ function Empty({ children }: { children: React.ReactNode }) {
     <div className="rounded border border-dashed border-zinc-200 px-3 py-4 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-400">
       {children}
     </div>
+  );
+}
+
+/**
+ * LLM provenance badge. Green when on a hosted preset (proves the report
+ * actually ran through OpenRouter); amber when on a local model (used to
+ * indicate a misconfigured run that fell back to Ollama — that path is
+ * removed but old reports may still surface it).
+ */
+function LLMBadge({ model }: { model: string }) {
+  const isOpenRouter = model.startsWith("openrouter:");
+  const isLocal = model.startsWith("ollama:") || model === "mock";
+  const palette = isOpenRouter
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : isLocal
+      ? "bg-amber-50 text-amber-800 border-amber-200"
+      : "bg-zinc-50 text-zinc-700 border-zinc-200";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em]",
+        palette,
+      )}
+      title={isLocal ? "Heads up: ran on a local fallback model — check OPENROUTER_API_KEY." : undefined}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", isOpenRouter ? "bg-emerald-600" : isLocal ? "bg-amber-600" : "bg-zinc-400")} />
+      {model.length > 50 ? model.slice(0, 50) + "…" : model}
+    </span>
   );
 }
 

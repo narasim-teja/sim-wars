@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { FileText, Loader2 } from "lucide-react";
 import { TopNav, type ViewMode } from "@/components/TopNav";
@@ -26,11 +26,15 @@ export function SimulatePageClient({ simId }: { simId: string }) {
   const [view, setView] = useState<ViewMode>("split");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 
-  const threat = useMemo(() => {
-    if (sim.status === "death_spiral")
-      return { level: "death_spiral" as const, reasons: [`triggered at tick ${sim.deathSpiralAt}`] };
-    return computeThreat(sim.current, sim.series);
-  }, [sim.current, sim.series, sim.status, sim.deathSpiralAt]);
+  // Cheap derivation — `computeThreat` reads `sim.current` and `sim.series`
+  // which already change identity on each tick:complete event, so the React
+  // Compiler can memoize this for free. Manual useMemo here triggered
+  // `react-hooks/exhaustive-deps` because the explicit dep list named
+  // properties of `sim` rather than `sim` itself.
+  const threat =
+    sim.status === "death_spiral"
+      ? { level: "death_spiral" as const, reasons: [`triggered at tick ${sim.deathSpiralAt}`] }
+      : computeThreat(sim.current, sim.series);
 
   // Step 3 = "Simulate"
   return (

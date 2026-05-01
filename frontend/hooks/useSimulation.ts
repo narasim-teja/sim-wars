@@ -59,6 +59,14 @@ const SERIES_CAP = 200;
 const FEED_CAP = 250;
 const LOG_CAP = 250;
 const EDGE_TTL_TICKS = 3;
+/**
+ * Per-tick edge cap. With 1000 agents acting each tick, raw edges would
+ * pile to 3,000 in the force-layout window — d3-force layout cost is O(N²)
+ * for short-range forces, so the graph stutters past ~500 nodes/edges.
+ * Keep the K largest-amount edges per tick so high-signal flows (whale
+ * sells, big stakes) still render and noise drops off.
+ */
+const MAX_EDGES_PER_TICK = 60;
 
 function initialState(): SimUiState {
   return {
@@ -148,18 +156,23 @@ function reducer(state: SimUiState, action: Action): SimUiState {
         };
       }
 
-      // Edges: keep only recent (within EDGE_TTL_TICKS), then add new for non-hold actions
+      // Edges: keep only recent (within EDGE_TTL_TICKS), then add new for non-hold actions.
+      // Cap per-tick additions to MAX_EDGES_PER_TICK by absolute amount so
+      // the graph doesn't stutter on a 1000-agent run where every tick
+      // fires hundreds of swaps + votes.
       const fresh = state.edges.filter((e) => tick - e.tick <= EDGE_TTL_TICKS);
-      const newEdges = actions
+      const tickEdges = actions
         .filter((a) => a.action !== "hold" && a.success)
-        .map((a) => ({
-          id: `${tick}-${a.agentId}-${a.action}-${a.amount}`,
-          tick,
-          from: a.agentId,
-          to: pickEdgeTarget(a, simState),
-          action: a.action,
-          amount: a.amount,
-        }));
+        .sort((a, b) => Math.abs(b.amount ?? 0) - Math.abs(a.amount ?? 0))
+        .slice(0, MAX_EDGES_PER_TICK);
+      const newEdges = tickEdges.map((a) => ({
+        id: `${tick}-${a.agentId}-${a.action}-${a.amount}`,
+        tick,
+        from: a.agentId,
+        to: pickEdgeTarget(a, simState),
+        action: a.action,
+        amount: a.amount,
+      }));
       const edges = [...fresh, ...newEdges];
 
       // Feed: append non-hold actions

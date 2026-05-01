@@ -169,6 +169,25 @@ export function ConfigEditor(props: ConfigEditorProps) {
           max={100}
           step={0.1}
         />
+        <NumberRow
+          label="Cooldown (ticks)"
+          path="staking.unstakeCooldownTicks"
+          value={config.staking.unstakeCooldownTicks ?? 1}
+          source={sourceFor("staking.unstakeCooldownTicks")}
+          onChange={onChange}
+          min={0}
+          step={1}
+        />
+        <NumberRow
+          label="Emission rate (per tick)"
+          path="staking.rewardEmissionRate"
+          value={config.staking.rewardEmissionRate ?? 0}
+          source={sourceFor("staking.rewardEmissionRate")}
+          onChange={onChange}
+          min={0}
+          max={1}
+          step={0.0001}
+        />
       </Section>
 
       {/* AMM */}
@@ -241,6 +260,72 @@ export function ConfigEditor(props: ConfigEditorProps) {
           min={0}
           step={1}
         />
+      </Section>
+
+      {/* veToken (Curve-style vote-escrow locks) */}
+      <Section title="veToken / vote-escrow">
+        <label className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+              Enabled
+            </span>
+            <FieldBadge source={sourceFor("veToken.enabled")} />
+          </span>
+          <input
+            type="checkbox"
+            checked={!!config.veToken?.enabled}
+            onChange={(e) =>
+              onChange("veToken", {
+                ...(config.veToken ?? {
+                  enabled: false,
+                  maxLockMonths: 48,
+                  voteWeightCurve: "linear-decay" as const,
+                  boostMultiplier: 2.5,
+                }),
+                enabled: e.target.checked,
+              })
+            }
+            className="h-4 w-4 cursor-pointer"
+          />
+        </label>
+        {config.veToken?.enabled && (
+          <>
+            <NumberRow
+              label="Max lock (months)"
+              path="veToken.maxLockMonths"
+              value={config.veToken.maxLockMonths}
+              source={sourceFor("veToken.maxLockMonths")}
+              onChange={onChange}
+              min={1}
+              step={1}
+            />
+            <NumberRow
+              label="Boost multiplier"
+              path="veToken.boostMultiplier"
+              value={config.veToken.boostMultiplier}
+              source={sourceFor("veToken.boostMultiplier")}
+              onChange={onChange}
+              min={0.001}
+              step={0.1}
+            />
+            <div className="grid grid-cols-[1fr_140px] items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-600">
+                  Weight curve
+                </span>
+                <FieldBadge source={sourceFor("veToken.voteWeightCurve")} />
+              </div>
+              <select
+                value={config.veToken.voteWeightCurve}
+                onChange={(e) => onChange("veToken.voteWeightCurve", e.target.value)}
+                className="rounded border border-zinc-200 bg-white px-2 py-1 text-right font-mono text-[12px] text-zinc-900 outline-none focus:border-zinc-900"
+              >
+                <option value="linear-decay">linear-decay</option>
+                <option value="constant">constant</option>
+              </select>
+            </div>
+          </>
+        )}
       </Section>
 
       {/* Stablecoin */}

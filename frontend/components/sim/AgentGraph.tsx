@@ -83,7 +83,14 @@ export function AgentGraph({
   }, [size.w, size.h]);
 
   // ─── nodes & links ──────────────────────────────────────────────────
-  const { nodes, links, maxBalance } = useMemo(() => {
+  // Splitting "build incoming list" (pure, memoized) from "merge with prior
+  // positions in nodesRef" (effect-local). React 19's `react-hooks/refs`
+  // rule forbids reading or writing refs during render — and d3-force
+  // *needs* node-object identity to be preserved across renders to keep
+  // x/y/vx/vy. So: pure list memoized; merge happens inside the effect that
+  // publishes to the simulation, and the merged list is mirrored to state
+  // for the d3-selection render effect to consume.
+  const { incoming, links, maxBalance } = useMemo(() => {
     const agents = Object.values(state.agents);
     const balances = agents.map((a) => a.balance);
     const maxB = balances.length ? Math.max(...balances) : 1;
@@ -95,12 +102,6 @@ export function AgentGraph({
       lastActionTick: a.lastAction?.tick,
     }));
 
-    const reused = incoming.map((n) => {
-      const prev = nodesRef.current.get(n.id);
-      return prev ? { ...prev, ...n } : n;
-    });
-    nodesRef.current = new Map(reused.map((n) => [n.id, n]));
-
     const links: LinkDatum[] = state.edges.map((e) => ({
       id: e.id,
       tick: e.tick,
@@ -111,16 +112,29 @@ export function AgentGraph({
       target: e.to,
     }));
 
-    return { nodes: reused, links, maxBalance: maxB };
+    return { incoming, links, maxBalance: maxB };
   }, [state.agents, state.edges, state.tick]);
+
+  // `nodes` is the merged list: incoming stats + persisted positions from
+  // the ref. Stored in state so the d3-selection effect re-runs when it
+  // changes; the ref keeps the d3-force-mutated copy authoritative for
+  // imperative ops (handleRefresh).
+  const [nodes, setNodes] = useState<NodeDatum[]>([]);
 
   useEffect(() => {
     if (!simRef.current) return;
+    const merged = incoming.map((n) => {
+      const prev = nodesRef.current.get(n.id);
+      // Preserve x/y/vx/vy/fx/fy from the prior frame; overwrite presentational fields.
+      return prev ? Object.assign(prev, n) : n;
+    });
+    nodesRef.current = new Map(merged.map((n) => [n.id, n]));
+    setNodes(merged);
     const sim = simRef.current;
-    sim.nodes(nodes);
+    sim.nodes(merged);
     (sim.force("link") as d3.ForceLink<NodeDatum, LinkDatum>).links(links);
     sim.alpha(0.5).restart();
-  }, [nodes, links]);
+  }, [incoming, links]);
 
   // ─── render ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -377,14 +391,22 @@ export function AgentGraph({
         .call(zoomRef.current.transform, d3.zoomIdentity);
     }
     if (simRef.current) {
-      // Release any pinned positions and rekick
-      for (const n of nodes) {
+      // Release any pinned positions and rekick. d3-force's contract is
+      // "I mutate the node objects you give me" — `fx`/`fy` are how callers
+      // pin or unpin a node, and the simulation writes `x`/`y`/`vx`/`vy`
+      // every tick. React 19's react-hooks/immutability rule can't model
+      // this paradigm, so we disable it here. Mutating via the ref's copy
+      // (not the React-state `nodes` array) keeps render-side immutability
+      // invariants intact.
+      for (const [, n] of nodesRef.current) {
+        /* eslint-disable react-hooks/immutability */
         n.fx = null;
         n.fy = null;
+        /* eslint-enable react-hooks/immutability */
       }
       simRef.current.alpha(0.9).restart();
     }
-  }, [nodes]);
+  }, []);
 
   const handleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;

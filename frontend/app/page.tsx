@@ -7,7 +7,15 @@ import { HeroIllustration } from "@/components/HeroIllustration";
 import { CustomSource } from "@/components/upload/CustomSource";
 import { ConfigEditor } from "@/components/upload/ConfigEditor";
 import { SCENARIO_PRESETS } from "@/lib/scenarios";
-import { createSim } from "@/lib/api";
+import { createSim, type RosterPreset } from "@/lib/api";
+import {
+  AGENT_COUNT_STEPS,
+  DEFAULT_AGENT_COUNT,
+  MAX_AGENTS,
+  ROSTER_PRESET_LABELS,
+  previewRoster,
+  rosterPresetFromProtocolKind,
+} from "@/lib/roster";
 import { AGENT_COLORS, AGENT_LABELS, agentTypeFromId } from "@/lib/agent-colors";
 import type { ExtractionOutcome, SimulationConfigParsed } from "@/lib/extraction/types";
 import { cn } from "@/lib/utils";
@@ -16,7 +24,12 @@ import { ArrowDown, ChevronDown, ChevronRight, Loader2, Play } from "lucide-reac
 type ScenarioId = (typeof SCENARIO_PRESETS)[number]["id"];
 type Mode = "preset" | "custom";
 
-const DEFAULT_AGENT_PRESET = "luna-20" as const;
+/** Map a preset scenario id to the backend roster preset. */
+const SCENARIO_TO_ROSTER: Record<ScenarioId, RosterPreset> = {
+  "luna-8": "luna",
+  "luna-20": "luna",
+  crv: "crv",
+};
 
 export default function Home() {
   const router = useRouter();
@@ -37,13 +50,56 @@ export default function Home() {
 
   const presetScenario = SCENARIO_PRESETS.find((s) => s.id === selected)!;
 
-  // The roster used for both display and launch:
-  //   - preset mode → the selected preset's roster
-  //   - custom mode → the LUNA-20 default roster (persona extraction is out of scope)
-  const activeAgents =
-    mode === "custom"
-      ? SCENARIO_PRESETS.find((s) => s.id === DEFAULT_AGENT_PRESET)!.payload.agents
-      : presetScenario.payload.agents;
+  /**
+   * Roster preset / agent count: derived from `mode + selected + protocolKind`
+   * during render. The user can override either by clicking the picker or
+   * sliding the count — those overrides are kept until any of the source
+   * dimensions changes, at which point we reset back to the auto-derived
+   * value. (React 19's `react-hooks/set-state-in-effect` rule disallows
+   * synchronizing derived state via useEffect, so we compute it here.)
+   */
+  const autoPreset: RosterPreset =
+    mode === "custom" && customMeta?.protocolKind
+      ? rosterPresetFromProtocolKind(customMeta.protocolKind)
+      : SCENARIO_TO_ROSTER[selected];
+  const autoAgentCount =
+    mode === "preset" ? presetScenario.payload.agents.length : DEFAULT_AGENT_COUNT;
+
+  const [presetOverride, setPresetOverride] = useState<RosterPreset | null>(null);
+  const [agentCountOverride, setAgentCountOverride] = useState<number | null>(null);
+
+  // Reset overrides when the source dimensions change. This is the canonical
+  // React-19 "calculate during render" pattern: a setState during render
+  // triggered by a mismatched key is allowed (it bails out the render
+  // immediately and re-runs with the new state).
+  const presetSourceKey = `${mode}:${selected}:${customMeta?.protocolKind ?? ""}`;
+  const [lastSourceKey, setLastSourceKey] = useState(presetSourceKey);
+  if (presetSourceKey !== lastSourceKey) {
+    setLastSourceKey(presetSourceKey);
+    setPresetOverride(null);
+    setAgentCountOverride(null);
+  }
+
+  const rosterPreset: RosterPreset = presetOverride ?? autoPreset;
+  const agentCount: number = agentCountOverride ?? autoAgentCount;
+
+  /**
+   * Roster preview: the *backend* expander runs at launch, but the UI shows
+   * an accurate breakdown (sums to exactly `agentCount`) so the user sees
+   * what they'll get before paying for the run. Cheap (O(13)) — no useMemo
+   * because the React Compiler can't track the override-derived deps.
+   */
+  const rosterPreview = previewRoster(agentCount, rosterPreset);
+
+  /**
+   * If the user picked a preset AND left the slider at the preset's native
+   * size, send the static `agents[]` so the hand-written persona configs
+   * (specific names, prompts) are preserved. Any other size routes through
+   * the server-side expander.
+   */
+  const sendStaticRoster =
+    mode === "preset" && agentCount === presetScenario.payload.agents.length;
+  const activeAgents = sendStaticRoster ? presetScenario.payload.agents : null;
 
   const customReady = mode === "custom" && customConfig !== null;
 
@@ -105,17 +161,32 @@ export default function Home() {
         return;
       }
     }
+    if (agentCount < 1 || agentCount > MAX_AGENTS) {
+      setError(`agentCount must be 1–${MAX_AGENTS}`);
+      return;
+    }
 
     setLaunching(true);
     try {
       const config =
         mode === "custom" && customConfig ? customConfig : presetScenario.payload.config;
-      const body = {
-        config,
-        agents: activeAgents,
-        tickConfig: { intervalMs: tickInterval, maxTicks },
-        onChain,
-      };
+      // Two payload shapes:
+      //   - sendStaticRoster: preserve the hand-written preset personas
+      //   - else: hand the count + preset to the backend expander
+      const body = sendStaticRoster && activeAgents
+        ? {
+            config,
+            agents: activeAgents,
+            tickConfig: { intervalMs: tickInterval, maxTicks },
+            onChain,
+          }
+        : {
+            config,
+            agentCount,
+            rosterPreset,
+            tickConfig: { intervalMs: tickInterval, maxTicks },
+            onChain,
+          };
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
     } catch (e) {
@@ -124,10 +195,14 @@ export default function Home() {
     }
   }
 
+  // Agent-type breakdown for the UI: from the static roster when we'd send it,
+  // otherwise synthesized from the preview.
   const agentTypes = new Map<string, number>();
-  for (const a of activeAgents) {
-    const t = agentTypeFromId(a.id);
-    agentTypes.set(t, (agentTypes.get(t) ?? 0) + 1);
+  if (activeAgents) {
+    for (const a of activeAgents) {
+      const t = agentTypeFromId(a.id);
+      agentTypes.set(t, (agentTypes.get(t) ?? 0) + 1);
+    }
   }
 
   return (
@@ -149,9 +224,10 @@ export default function Home() {
               <span className="text-zinc-400">Stress-test the future.</span>
             </h1>
             <p className="max-w-xl text-[15px] leading-7 text-zinc-600">
-              Drop a whitepaper or a pre-built scenario. Sim Wars spawns up to <em className="font-semibold not-italic text-zinc-900">20 LLM-powered adversaries</em> — whales,
-              governance attackers, MEV bots, sybil swarms — and lets them attack your design until it survives,
-              or speedruns a death spiral.
+              Drop a whitepaper or a pre-built scenario. Sim Wars spawns from{" "}
+              <em className="font-semibold not-italic text-zinc-900">8 to {MAX_AGENTS.toLocaleString()} LLM-powered adversaries</em>{" "}
+              — whales, governance attackers, MEV bots, sybil swarms — and lets them attack your
+              design until it survives, or speedruns a death spiral.
             </p>
             <p className="font-mono text-[12px] uppercase tracking-[0.18em] text-zinc-700">
               <span className="border-b border-zinc-300 pb-0.5">
@@ -185,8 +261,8 @@ export default function Home() {
             </p>
 
             <div className="grid grid-cols-2 gap-6 pt-2">
-              <Stat header="Low cost" sub="≈ $5/run with mock-LLM" />
-              <Stat header="High coverage" sub="up to 1M agents (engine cap)" />
+              <Stat header="OpenRouter-backed" sub="cheap preset for agents · quality preset for the report" />
+              <Stat header={`Up to ${MAX_AGENTS.toLocaleString()} agents`} sub="server-side roster expander · veToken / LUNA / balanced presets" />
             </div>
           </div>
 
@@ -289,8 +365,8 @@ export default function Home() {
           <ol className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             {[
               { n: "01", title: "Seed extraction", desc: "Tokenomics parameters parsed from PDF, GitHub, or raw markdown via OpenRouter preset." },
-              { n: "02", title: "Roster generation", desc: "20 adversarial personas with goals, risk tolerance, and visibility rules baked in." },
-              { n: "03", title: "Live simulation", desc: "Tick loop runs LLM decisions in parallel. Force graph + metrics stream to the dashboard." },
+              { n: "02", title: "Roster expansion", desc: "Server-side expander spawns 1–5,000 adversarial personas from veToken / LUNA / balanced archetypes." },
+              { n: "03", title: "Live simulation", desc: "Per-tick LLM decisions batched in parallel. Stake / propose / vote land on Solana with real tx signatures." },
               { n: "04", title: "Failure report", desc: "Resilience score, attack timeline, and parameter recommendations after the run." },
             ].map((s) => (
               <li key={s.n} className="flex flex-col gap-2 border-l-2 border-zinc-200 pl-4">
@@ -310,45 +386,68 @@ export default function Home() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
               <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-                02 / Adversary roster — {activeAgents.length} agents
+                02 / Adversary roster — {agentCount.toLocaleString()} agents
+                <span className="ml-2 normal-case tracking-normal text-zinc-400">
+                  ({rosterPreview.totalArchetypes} archetypes · {ROSTER_PRESET_LABELS[rosterPreset].label})
+                </span>
               </span>
               <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-emerald-700">
                 ● ready
               </span>
             </div>
-            {mode === "custom" && (
-              <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-2 font-mono text-[11px] text-zinc-600">
-                Personas not extracted from whitepaper — using LUNA-20 default roster.
-              </div>
-            )}
-            <div className="grid gap-1.5">
-              {activeAgents.map((a) => {
-                const t = agentTypeFromId(a.id);
-                return (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-3 rounded border border-zinc-100 bg-white px-3 py-1.5"
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ background: AGENT_COLORS[t] }}
-                    />
-                    <span className="font-mono text-[12px] font-semibold text-zinc-900">{a.id}</span>
-                    <span className="ml-auto font-mono text-[11px] text-zinc-500">{AGENT_LABELS[t]}</span>
+
+            {/* Roster preset picker */}
+            <RosterPresetPicker
+              value={rosterPreset}
+              onChange={setPresetOverride}
+              autoFromKind={mode === "custom" ? customMeta?.protocolKind : undefined}
+            />
+
+            {/* Agent count slider */}
+            <AgentCountSlider value={agentCount} onChange={setAgentCountOverride} />
+
+            {sendStaticRoster && activeAgents ? (
+              // Static roster path: show the hand-written personas verbatim.
+              <div className="grid gap-1.5">
+                {activeAgents.slice(0, 100).map((a) => {
+                  const t = agentTypeFromId(a.id);
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-3 rounded border border-zinc-100 bg-white px-3 py-1.5"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: AGENT_COLORS[t] }}
+                      />
+                      <span className="font-mono text-[12px] font-semibold text-zinc-900">{a.id}</span>
+                      <span className="ml-auto font-mono text-[11px] text-zinc-500">{AGENT_LABELS[t]}</span>
+                    </div>
+                  );
+                })}
+                {activeAgents.length > 100 && (
+                  <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-1.5 font-mono text-[11px] text-zinc-500">
+                    + {activeAgents.length - 100} more personas hidden
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            ) : (
+              // Expander path: show the synthesized preview.
+              <RosterPreviewBlock preview={rosterPreview} />
+            )}
+
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-zinc-200 pt-3">
-              {[...agentTypes.entries()].map(([type, n]) => (
-                <div key={type} className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-600">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: AGENT_COLORS[type as keyof typeof AGENT_COLORS] }}
-                  />
-                  {n}× {AGENT_LABELS[type as keyof typeof AGENT_LABELS]}
-                </div>
-              ))}
+              {sendStaticRoster && activeAgents
+                ? [...agentTypes.entries()].map(([type, n]) => (
+                    <div key={type} className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-600">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: AGENT_COLORS[type as keyof typeof AGENT_COLORS] }}
+                      />
+                      {n}× {AGENT_LABELS[type as keyof typeof AGENT_LABELS]}
+                    </div>
+                  ))
+                : null}
             </div>
           </div>
 
@@ -507,6 +606,159 @@ function ChainToggle({
         this, the sim runs against an in-memory AMM only.
       </span>
     </label>
+  );
+}
+
+/**
+ * Discrete log-scale slider over `AGENT_COUNT_STEPS` plus a free-form number
+ * input for power users who want a value the slider doesn't hit. Keeps the
+ * common cases one click away while still allowing 137-agent stress tests.
+ */
+function AgentCountSlider({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  // Slider position = nearest step index. Free-form input bypasses snapping.
+  const stepIndex = useMemo(() => {
+    let best = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < AGENT_COUNT_STEPS.length; i++) {
+      const d = Math.abs(AGENT_COUNT_STEPS[i] - value);
+      if (d < bestDiff) {
+        best = i;
+        bestDiff = d;
+      }
+    }
+    return best;
+  }, [value]);
+  const cost = useMemo(() => estimateCost(value), [value]);
+  return (
+    <div className="flex flex-col gap-2 rounded border border-zinc-200 bg-white p-3">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+          AGENT COUNT
+        </span>
+        <input
+          type="number"
+          min={1}
+          max={MAX_AGENTS}
+          value={value}
+          onChange={(e) => onChange(Math.max(1, Math.min(MAX_AGENTS, Number(e.target.value) || 1)))}
+          className="w-20 rounded border border-zinc-300 bg-white px-2 py-1 text-right font-mono text-[12px] text-zinc-900 outline-none focus:border-zinc-900"
+        />
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={AGENT_COUNT_STEPS.length - 1}
+        value={stepIndex}
+        onChange={(e) => onChange(AGENT_COUNT_STEPS[Number(e.target.value)])}
+        className="h-1 w-full cursor-pointer appearance-none rounded bg-zinc-200 accent-zinc-900"
+      />
+      <div className="flex justify-between font-mono text-[10px] text-zinc-400">
+        {AGENT_COUNT_STEPS.map((s) => (
+          <span key={s} className={cn(s === value && "text-zinc-900")}>{s.toLocaleString()}</span>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-2 font-mono text-[11px] text-zinc-600">
+        <span>≈ {cost.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD/30-tick run</span>
+        <span className="text-right">{value > 1000 ? "Helius RPC recommended" : "localnet OK"}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Rough cost estimate for the agent-decision LLM calls. The actual
+ * `OPENROUTER_AGENT_PRESET` model price varies; we assume a low-cost open
+ * model at ~$0.0002/decision (qwen3:8b on OpenRouter). Boost-routed `fast`
+ * personas are cheaper still — under-counted on purpose so the user doesn't
+ * get a sticker shock when reality comes in lower.
+ */
+function estimateCost(agents: number): number {
+  const decisionsPerRun = agents * 30; // 30-tick default
+  const usdPerCall = 0.0002;
+  const reportCost = 0.005; // single report call
+  return decisionsPerRun * usdPerCall + reportCost;
+}
+
+const ROSTER_PRESETS_ORDERED: RosterPreset[] = ["luna", "crv", "balanced"];
+
+function RosterPresetPicker({
+  value, onChange, autoFromKind,
+}: {
+  value: RosterPreset;
+  onChange: (p: RosterPreset) => void;
+  autoFromKind?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-zinc-200 bg-white p-3">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+          ROSTER PRESET
+        </span>
+        {autoFromKind && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+            auto from {autoFromKind}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {ROSTER_PRESETS_ORDERED.map((p) => {
+          const active = value === p;
+          const meta = ROSTER_PRESET_LABELS[p];
+          return (
+            <button
+              key={p}
+              onClick={() => onChange(p)}
+              className={cn(
+                "flex cursor-pointer flex-col gap-1 rounded border px-2.5 py-2 text-left transition-colors",
+                active
+                  ? "border-zinc-900 bg-zinc-50 shadow-[0_0_0_2px_rgba(24,24,27,0.05)]"
+                  : "border-zinc-200 hover:border-zinc-400",
+              )}
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-700">{p}</span>
+              <span className="text-[12px] font-semibold leading-tight text-zinc-900">{meta.label}</span>
+              <span className="text-[10px] leading-snug text-zinc-500">{meta.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Roster preview block: aggregated archetype breakdown for an N-agent
+ * expander run. Shown when the static roster JSON wouldn't be sent.
+ */
+function RosterPreviewBlock({ preview }: { preview: ReturnType<typeof previewRoster> }) {
+  return (
+    <div className="rounded border border-dashed border-zinc-300 bg-white">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 p-3 sm:grid-cols-3">
+        {preview.byArchetype.map((a) => {
+          const colorKey = (
+            {
+              WHALE: "whale", GOV: "governance_attacker", SYBIL: "sybil", MEV: "mev_bot",
+              FARMER: "yield_farmer", DEGEN: "retail_degen", HOLDER: "long_term_holder",
+              ARB: "arbitrageur", TREASURY: "treasury", LP: "lp_provider",
+              ANALYST: "analyst", INSIDER: "insider", PANIC: "panic_seller",
+            } as Record<string, keyof typeof AGENT_COLORS>
+          )[a.prefix];
+          return (
+            <div key={a.prefix} className="flex items-center gap-2 font-mono text-[11px] text-zinc-700">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: colorKey ? AGENT_COLORS[colorKey] : "#888" }}
+              />
+              <span className="font-semibold">{a.count}×</span>
+              <span className="truncate text-zinc-600">{a.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="border-t border-zinc-200 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+        Backend expander runs at launch · ratios sum to {preview.count.toLocaleString()}
+      </div>
+    </div>
   );
 }
 
