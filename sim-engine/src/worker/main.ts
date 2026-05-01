@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { SimDatabase } from "../db/database";
-import { buildLLMClient } from "../llm/factory";
+import { buildLLMClient, buildReportLLMClient } from "../llm/factory";
 import { pathsFor } from "../ipc/paths";
 import { EventWriter, type SimStatus } from "../ipc/event-writer";
 import { CommandReader, type WorkerCommand } from "../ipc/command-reader";
@@ -118,12 +118,13 @@ async function main() {
     if (!skipReport) {
       events.emit({ kind: "report:start", ts: Date.now(), simId });
       try {
+        const reportLlm = buildReportLLMClient();
         const report = await generateReport({
           simId,
           config: scenario.config,
           agents: scenario.agents,
           db,
-          llm,
+          llm: reportLlm,
           deathSpiralDetected: summary.deathSpiralDetected,
           deathSpiralAtTick: summary.deathSpiralAtTick,
           finalStatus: status,

@@ -77,9 +77,23 @@ export class AgentOrchestrator {
       });
 
       if (staked > 0) {
-        this.stateManager.stake(persona.id, staked);
+        // For veToken protocols, initial stake commits to max lock by default
+        // — matches the typical Curve "lock everything for max boost" model.
+        // Personas can still unstake liquid tokens; they just can't unwind
+        // the staked half until the lock expires.
+        this.stateManager.stake(persona.id, staked, this.defaultLockTicks());
       }
     }
+  }
+
+  /**
+   * Default lock duration when an agent stakes via a `stake` action. Returns
+   * undefined for non-veToken protocols (no-op in StateManager.stake).
+   */
+  private defaultLockTicks(): number | undefined {
+    const ve = this.stateManager.getConfig().veToken;
+    if (ve?.enabled) return ve.maxLockMonths * 30;
+    return undefined;
   }
 
   /**
@@ -324,7 +338,9 @@ export class AgentOrchestrator {
         if (toStake > 0 && toStake <= agent.holdings.token) {
           agent.holdings.token -= toStake;
           agent.holdings.staked += toStake;
-          this.stateManager.stake(agent.persona.id, toStake);
+          // veToken protocols: apply max-lock by default. The lock map only
+          // grows: existing locks aren't shortened by additional stakes.
+          this.stateManager.stake(agent.persona.id, toStake, this.defaultLockTicks());
           this.stateManager.recordTrade(agent.persona.id, "stake", toStake);
         } else {
           success = false;

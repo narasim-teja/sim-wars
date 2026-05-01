@@ -76,6 +76,23 @@ export function deriveAllocation(
   );
 }
 
+/**
+ * Vesting PDA — one per (config, beneficiary). The token program's seeds bind
+ * a single vesting account to a beneficiary, so deploying multiple vested
+ * allocations requires distinct per-allocation beneficiary pubkeys. The
+ * deployer signs `create_vesting` as authority; per-allocation beneficiary
+ * keypairs sign `claim_vested` later.
+ */
+export function deriveVesting(
+  config: PublicKey,
+  beneficiary: PublicKey,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("vesting"), config.toBuffer(), beneficiary.toBuffer()],
+    TOKEN_MINT_PROGRAM_ID,
+  );
+}
+
 export function derivePool(
   tokenAMint: PublicKey,
   tokenBMint: PublicKey,
@@ -205,6 +222,16 @@ export interface StakingDeployment {
   unstakeCooldownTicks: number;
   /** Lock period in ticks before a stake can request unstake. */
   lockPeriodTicks: number;
+  /** On-chain max APY ceiling (bps). Currently informational. */
+  maxApyBps: number;
+  /** Bps slashed on early exit and routed to the reward vault. */
+  unstakePenaltyBps: number;
+  /**
+   * Fraction of total_staked emitted into the reward vault each tick.
+   * Engine reads this to schedule per-tick `fund_reward_vault` calls.
+   * 0 disables emissions.
+   */
+  rewardEmissionRate: number;
 }
 
 export interface GovernanceDeployment {
@@ -212,6 +239,32 @@ export interface GovernanceDeployment {
   governance: string;
   /** Used to mirror the on-chain proposal count for PDA derivation. */
   initialProposalCount?: number;
+}
+
+/**
+ * One per vested allocation. The deployer signs as authority; the beneficiary
+ * keypair (stored at `beneficiaryKeypairPath`) signs `claim_vested` to mint
+ * unlocked tokens into `beneficiaryAta`.
+ */
+export interface VestingEntry {
+  /** Allocation name (matches the AllocationBucket PDA name field). */
+  allocationName: string;
+  /** PDA address of the VestingAccount. */
+  vesting: string;
+  /** Beneficiary pubkey (used in the vesting PDA seeds). */
+  beneficiary: string;
+  /** Path to the beneficiary keypair file (deployer owns it for unattended claims). */
+  beneficiaryKeypairPath: string;
+  /** Beneficiary's token ATA — `claim_vested` mints here. */
+  beneficiaryAta: string;
+  /** Total tokens locked in this vesting (UI units, not atoms). */
+  totalAmount: number;
+  /** Tick at which the vesting clock starts (== sim tick 0 for our purposes). */
+  startTick: number;
+  /** Cliff in ticks before any tokens unlock. */
+  cliffTicks: number;
+  /** Total ticks until fully unlocked. */
+  vestingTicks: number;
 }
 
 export interface Deployment {
@@ -241,6 +294,8 @@ export interface Deployment {
   staking?: StakingDeployment;
   /** Optional governance deployment — when present, on-chain governance is enabled. */
   governance?: GovernanceDeployment;
+  /** Vesting accounts created at deploy. Empty when no allocation has vestingMonths > 0. */
+  vesting?: VestingEntry[];
   agents: AgentWalletEntry[];
   decimals: number;
 }

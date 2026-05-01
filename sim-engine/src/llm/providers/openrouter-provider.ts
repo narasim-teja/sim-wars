@@ -10,6 +10,13 @@ export interface OpenRouterProviderOptions {
   referer?: string;
   /** X-Title header (OpenRouter app title), optional. */
   title?: string;
+  /**
+   * OpenRouter preset slug. When set, the request goes to `@preset/<slug>`
+   * which lets you manage model + system prompt + temperature on the
+   * dashboard without code changes. Overrides `model` for the request body
+   * but `model` is still kept for telemetry (`provider.name`).
+   */
+  preset?: string;
 }
 
 /**
@@ -24,14 +31,18 @@ export class OpenRouterProvider implements LLMClient {
   private apiKey: string;
   private referer?: string;
   private title?: string;
+  private preset?: string;
 
   constructor(opts: OpenRouterProviderOptions = {}) {
+    this.preset = opts.preset;
     this.model = opts.model ?? process.env.LLM_MODEL ?? "qwen/qwen3-8b";
     this.baseUrl = (opts.baseUrl ?? process.env.LLM_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/+$/, "");
     this.apiKey = opts.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.LLM_API_KEY ?? "";
     this.referer = opts.referer ?? process.env.OPENROUTER_REFERER;
     this.title = opts.title ?? process.env.OPENROUTER_TITLE ?? "sim-wars";
-    this.name = `openrouter:${this.model}`;
+    this.name = this.preset
+      ? `openrouter:@preset/${this.preset}`
+      : `openrouter:${this.model}`;
 
     if (!this.apiKey) {
       throw new Error("OpenRouterProvider: missing API key (set OPENROUTER_API_KEY or LLM_API_KEY)");
@@ -51,12 +62,18 @@ export class OpenRouterProvider implements LLMClient {
     if (this.referer) headers["HTTP-Referer"] = this.referer;
     if (this.title) headers["X-Title"] = this.title;
 
+    // Preset request: model+system+temperature live on the dashboard. We
+    // still pass max_tokens because some agent prompts need more headroom
+    // than a fast/cheap preset's default.
     const body: Record<string, unknown> = {
-      model: this.model,
+      model: this.preset ? `@preset/${this.preset}` : this.model,
       messages: [{ role: "user", content: prompt }],
-      temperature: opts.temperature ?? 0.3,
       max_tokens: opts.maxTokens ?? 512,
     };
+    if (!this.preset) {
+      // Only set temperature when not using a preset — preset owns it.
+      body.temperature = opts.temperature ?? 0.3;
+    }
     if (opts.jsonMode !== false) {
       body.response_format = { type: "json_object" };
     }

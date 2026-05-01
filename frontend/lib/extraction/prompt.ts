@@ -21,14 +21,21 @@ Return ONLY a JSON object matching this shape (every field is OPTIONAL — only 
       "totalSupply": <number, total minted supply (not circulating)>,
       "decimals": <int, default 6 if unstated>,
       "allocations": [
-        { "name": "<string>", "percent": <0-100>, "vestingMonths": <int, 0 if unlocked> }
+        {
+          "name": "<string>",
+          "percent": <0-100>,
+          "vestingMonths": <int, TOTAL months from TGE until fully unlocked; 0 if unlocked at TGE>,
+          "cliffMonths": <int, months before ANY tokens unlock; 0 if no cliff. MUST be ≤ vestingMonths>
+        }
       ]
     },
     "staking": {
       "baseAPY": <percent, e.g. 19.45 for ~19.45% APY>,
       "maxAPY": <percent, top of range if a band is given; else same as baseAPY>,
       "lockPeriodTicks": <int — convert from days/weeks: 1 tick ~= 1 day; 0 if no lock>,
-      "unstakePenaltyPercent": <percent>
+      "unstakePenaltyPercent": <percent — early-exit slash, often 0>,
+      "unstakeCooldownTicks": <int — cooldown between request_unstake and complete_unstake. Convert from time: '7-day cooldown' → 7. 0 if instant>,
+      "rewardEmissionRate": <fraction of total_staked emitted per tick into the reward vault. Map APY/emissions schedule: 'X% annual emissions' → X/100/365. 0 if rewards are funded only at TGE>
     },
     "amm": {
       "initialLiquidity": <token-side liquidity at TGE>,
@@ -46,6 +53,12 @@ Return ONLY a JSON object matching this shape (every field is OPTIONAL — only 
       "targetPeg": <number, usually 1 for USD>,
       "mintBurnRatio": <number, e.g. 1 means 1 USD of LUNA burned per 1 UST minted>,
       "reserveAmount": <number, USD value of backing reserve at TGE>
+    },
+    "veToken": {
+      "enabled": <true ONLY if the protocol uses vote-escrow / time-weighted staking. Curve veCRV, Balancer veBAL, Frax veFXS all qualify. Generic time-locked staking with no governance weight does NOT qualify — that goes in 'staking.lockPeriodTicks'>,
+      "maxLockMonths": <int, max lock duration. Curve = 48, many forks 12 or 24>,
+      "voteWeightCurve": "<one of: linear-decay (weight scales with remaining lock — Curve default) | constant (fixed boost regardless of remaining time)>",
+      "boostMultiplier": <number, max boost at full lock. 2.5 is the Curve canonical max>
     }
   },
   "protocolName": "<string, e.g. 'Terra LUNA / UST'>",
@@ -62,6 +75,16 @@ RULES:
 - If allocations are listed but don't sum to 100, return them verbatim — do not normalize.
 - "stablecoin.enabled" should be true ONLY for protocols that mint/burn a peg-target asset (Terra UST, Frax, etc.). Lending stables on top of collateral don't count.
 - If the source is not a tokenomics document at all (e.g. a generic README, a code file, a research paper unrelated to a token), return: {"config":{},"notes":"source does not contain tokenomics","confidence":0}.
+
+VESTING — extract carefully. Common patterns and how to encode them:
+- "fully liquid at TGE" / "no vesting" / "circulating at launch"     → vestingMonths: 0,  cliffMonths: 0
+- "linear over 24 months, no cliff"                                  → vestingMonths: 24, cliffMonths: 0
+- "12-month cliff, then linear over 36 months"                       → vestingMonths: 48, cliffMonths: 12   (TOTAL = cliff + linear duration)
+- "1-year cliff, 3-year linear unlock thereafter"                    → vestingMonths: 48, cliffMonths: 12
+- "100% unlocked after 6 months" (lump-sum cliff, no linear)         → vestingMonths: 6,  cliffMonths: 6
+- "25% at TGE, then linear over 18 months for the rest"              → split into TWO allocation entries: one with 25% and vestingMonths: 0, one with 75% (renamed e.g. "Team (vested)") and vestingMonths: 18, cliffMonths: 0
+- If a cliff is mentioned without a linear schedule, assume the cliff IS the full unlock (vestingMonths = cliffMonths).
+- If the source is silent on vesting for an allocation, default to vestingMonths: 0.
 
 SOURCE (${sourceLabel}):
 <<<

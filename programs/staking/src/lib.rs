@@ -14,14 +14,26 @@ pub mod staking {
     use super::*;
 
     /// Create the staking pool for a given stake mint. One pool per mint.
+    ///
+    /// `max_apy_bps` and `unstake_penalty_bps` are stored alongside the
+    /// existing parameters so the on-chain config matches the SimulationConfig
+    /// extracted from the whitepaper. `max_apy_bps` is currently informational
+    /// (used by future dynamic-APY logic); `unstake_penalty_bps` is enforced
+    /// at `complete_unstake` time — the slashed remainder is forwarded to the
+    /// reward vault, recycling sell-pressure haircuts back into yield.
     pub fn initialize_pool(
         ctx: Context<InitializePool>,
         base_apy_bps: u16,
         ticks_per_year: u32,
         lock_period_ticks: u32,
         unstake_cooldown_ticks: u32,
+        max_apy_bps: u16,
+        unstake_penalty_bps: u16,
     ) -> Result<()> {
         require!(base_apy_bps <= 10_000, StakingError::ApyTooHigh);
+        require!(max_apy_bps <= 10_000, StakingError::ApyTooHigh);
+        require!(max_apy_bps >= base_apy_bps, StakingError::MaxBelowBase);
+        require!(unstake_penalty_bps <= 10_000, StakingError::PenaltyTooHigh);
         require!(ticks_per_year > 0, StakingError::InvalidTicksPerYear);
 
         let pool = &mut ctx.accounts.pool;
@@ -33,16 +45,20 @@ pub mod staking {
         pool.ticks_per_year = ticks_per_year;
         pool.lock_period_ticks = lock_period_ticks;
         pool.unstake_cooldown_ticks = unstake_cooldown_ticks;
+        pool.max_apy_bps = max_apy_bps;
+        pool.unstake_penalty_bps = unstake_penalty_bps;
         pool.total_staked = 0;
         pool.current_tick = 0;
         pool.bump = ctx.bumps.pool;
         pool.pool_authority_bump = ctx.bumps.pool_authority;
 
         msg!(
-            "Staking pool initialized: apy={}bps, lock={}ticks, cooldown={}ticks",
+            "Staking pool initialized: apy={}bps (max={}), lock={}ticks, cooldown={}ticks, penalty={}bps",
             base_apy_bps,
+            max_apy_bps,
             lock_period_ticks,
-            unstake_cooldown_ticks
+            unstake_cooldown_ticks,
+            unstake_penalty_bps,
         );
         Ok(())
     }
@@ -154,7 +170,10 @@ pub mod staking {
         Ok(())
     }
 
-    /// After cooldown: release pending tokens to the user.
+    /// After cooldown: release pending tokens to the user, minus any configured
+    /// `unstake_penalty_bps`. The penalty stays inside the staking program —
+    /// it transfers from the stake vault to the reward vault, which means
+    /// "early-exit haircuts fund yield for the holders who stayed."
     pub fn complete_unstake(ctx: Context<CompleteUnstake>) -> Result<()> {
         let pool = &ctx.accounts.pool;
         let stake_account = &mut ctx.accounts.stake_account;
@@ -177,23 +196,60 @@ pub mod staking {
         ];
         let signer_seeds = &[seeds];
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.key(),
-                Transfer {
-                    from: ctx.accounts.stake_vault.to_account_info(),
-                    to: ctx.accounts.user_ata.to_account_info(),
-                    authority: ctx.accounts.pool_authority.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            amount,
-        )?;
+        // Split the released amount into (user_share, penalty_share) using the
+        // pool's configured penalty in bps. user_share rounds DOWN so we never
+        // overpay; penalty_share gets the remainder.
+        let penalty_bps = pool.unstake_penalty_bps as u128;
+        let user_share = if penalty_bps == 0 {
+            amount
+        } else {
+            let user_u128 = (amount as u128)
+                .checked_mul(10_000u128 - penalty_bps)
+                .ok_or(StakingError::MathOverflow)?
+                .checked_div(10_000u128)
+                .ok_or(StakingError::MathOverflow)?;
+            u64::try_from(user_u128).map_err(|_| StakingError::MathOverflow)?
+        };
+        let penalty_share = amount.checked_sub(user_share).ok_or(StakingError::MathOverflow)?;
+
+        if user_share > 0 {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.key(),
+                    Transfer {
+                        from: ctx.accounts.stake_vault.to_account_info(),
+                        to: ctx.accounts.user_ata.to_account_info(),
+                        authority: ctx.accounts.pool_authority.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                user_share,
+            )?;
+        }
+        if penalty_share > 0 {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.key(),
+                    Transfer {
+                        from: ctx.accounts.stake_vault.to_account_info(),
+                        to: ctx.accounts.reward_vault.to_account_info(),
+                        authority: ctx.accounts.pool_authority.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                penalty_share,
+            )?;
+        }
 
         stake_account.pending_unstake_amount = 0;
         stake_account.pending_unlock_tick = 0;
 
-        msg!("Unstake completed: {} tokens released", amount);
+        msg!(
+            "Unstake completed: {} → user, {} → reward vault (penalty {}bps)",
+            user_share,
+            penalty_share,
+            pool.unstake_penalty_bps,
+        );
         Ok(())
     }
 
@@ -273,6 +329,12 @@ pub struct StakingPool {
     pub ticks_per_year: u32,
     pub lock_period_ticks: u32,
     pub unstake_cooldown_ticks: u32,
+    /// Upper bound for dynamic-APY logic. Currently informational; future
+    /// enhancement may scale APY based on staked %. Must be >= base_apy_bps.
+    pub max_apy_bps: u16,
+    /// Bps deducted from the released amount in `complete_unstake`. Slashed
+    /// portion transfers to the reward vault instead of the user's ATA.
+    pub unstake_penalty_bps: u16,
     pub total_staked: u64,
     pub current_tick: u64,
     pub bump: u8,
@@ -512,6 +574,11 @@ pub struct CompleteUnstake<'info> {
     #[account(mut, address = pool.stake_vault)]
     pub stake_vault: Account<'info, TokenAccount>,
 
+    /// Reward vault — receives the slashed remainder when `unstake_penalty_bps > 0`.
+    /// Required even when penalty is 0 (cheaper than two account variants).
+    #[account(mut, address = pool.reward_vault)]
+    pub reward_vault: Account<'info, TokenAccount>,
+
     #[account(
         mut,
         constraint = user_ata.owner == user.key() @ StakingError::Unauthorized,
@@ -599,6 +666,10 @@ pub enum StakingError {
     Unauthorized,
     #[msg("APY bps must be <= 10000")]
     ApyTooHigh,
+    #[msg("max_apy_bps must be >= base_apy_bps")]
+    MaxBelowBase,
+    #[msg("unstake_penalty_bps must be <= 10000")]
+    PenaltyTooHigh,
     #[msg("ticks_per_year must be > 0")]
     InvalidTicksPerYear,
     #[msg("Amount must be greater than zero")]

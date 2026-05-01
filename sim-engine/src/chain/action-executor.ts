@@ -5,12 +5,16 @@ import {
   getAmmDexProgram,
   getStakingProgram,
   getGovernanceProgram,
+  getTokenMintProgram,
   loadDeployment,
   deriveStakeAccount,
   deriveProposal,
   deriveVoteReceipt,
+  deriveMintAuthority,
+  deriveTokenomicsConfig,
   type Deployment,
   type AgentWalletEntry,
+  type VestingEntry,
 } from "./sdk";
 import { loadKeypair, getProvider } from "./connection";
 
@@ -36,6 +40,16 @@ export interface ChainVoteResult {
   txSignature: string;
   proposalId: number;
   support: boolean;
+}
+
+export interface ChainClaimVestedResult {
+  /** Per-allocation results. Failures are swallowed and reported via `error`. */
+  claims: {
+    allocationName: string;
+    txSignature: string | null;
+    /** Empty when nothing newly unlocked (program returned NothingToClaim). */
+    error: string | null;
+  }[];
 }
 
 /**
@@ -396,6 +410,120 @@ export class ChainExecutor {
           governance: new PublicKey(gov.governance),
         })
         .rpc();
+    }
+    return out;
+  }
+
+  /**
+   * Top up the staking reward vault from the deployer's LUNA ATA. Used by the
+   * engine to schedule per-tick emissions: `amount = total_staked × rewardEmissionRate`.
+   * No-op when `amount <= 0` (e.g. nothing staked yet, or emission rate = 0).
+   * Returns null when staking isn't configured at all.
+   */
+  async fundRewardVault(amount: number): Promise<{ txSignature: string } | null> {
+    if (!this.deployment.staking) return null;
+    if (amount <= 0) return null;
+
+    const program = getStakingProgram(this.provider);
+    const st = this.deployment.staking;
+    const payer = (this.provider.wallet as { payer?: Keypair }).payer;
+    if (!payer) throw new Error("provider.wallet.payer is required for fundRewardVault");
+
+    // The deployer's LUNA ATA holds the seed allocation. We don't track its
+    // address in the manifest (it's the deployer's pubkey + lunaMint), so
+    // derive it via the standard SPL ATA seed.
+    const { getAssociatedTokenAddress } = await import("@solana/spl-token");
+    const funderAta = await getAssociatedTokenAddress(
+      new PublicKey(this.deployment.mints.luna),
+      payer.publicKey,
+    );
+
+    const txSignature = await program.methods
+      .fundRewardVault(this.toAtoms(amount))
+      .accounts({
+        funder: payer.publicKey,
+        pool: new PublicKey(st.pool),
+        rewardVault: new PublicKey(st.rewardVault),
+        funderAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+    return { txSignature };
+  }
+
+  // ==========================================================================
+  // Vesting (optional — requires deployment.vesting)
+  // ==========================================================================
+
+  hasVesting(): boolean {
+    return !!this.deployment.vesting && this.deployment.vesting.length > 0;
+  }
+
+  getVestingEntries(): VestingEntry[] {
+    return this.deployment.vesting ?? [];
+  }
+
+  /**
+   * For each vested allocation, attempt to mint newly-unlocked tokens to the
+   * beneficiary's ATA. The on-chain program enforces cliff + linear unlock
+   * against `current_tick`; we simply call it each tick and tolerate
+   * `NothingToClaim` errors during pre-cliff or no-progress windows.
+   *
+   * Returns the per-allocation outcome so callers can surface unlock events
+   * to the simulation log.
+   */
+  async claimAllVested(currentTick: number): Promise<ChainClaimVestedResult> {
+    const vesting = this.deployment.vesting ?? [];
+    if (vesting.length === 0) return { claims: [] };
+
+    const program = getTokenMintProgram(this.provider);
+    const lunaMint = new PublicKey(this.deployment.mints.luna);
+    const [mintAuthority] = deriveMintAuthority(lunaMint);
+    const [tokenomicsConfig] = deriveTokenomicsConfig(lunaMint);
+
+    const out: ChainClaimVestedResult = { claims: [] };
+    for (const entry of vesting) {
+      let beneficiaryKp;
+      try {
+        beneficiaryKp = loadKeypair(entry.beneficiaryKeypairPath);
+      } catch (e) {
+        out.claims.push({
+          allocationName: entry.allocationName,
+          txSignature: null,
+          error: `keypair load failed: ${(e as Error).message}`,
+        });
+        continue;
+      }
+
+      try {
+        const txSignature = await program.methods
+          .claimVested(new BN(currentTick))
+          .accounts({
+            beneficiary: beneficiaryKp.publicKey,
+            config: tokenomicsConfig,
+            mint: lunaMint,
+            mintAuthority,
+            vesting: new PublicKey(entry.vesting),
+            beneficiaryAta: new PublicKey(entry.beneficiaryAta),
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([beneficiaryKp])
+          .rpc();
+        out.claims.push({
+          allocationName: entry.allocationName,
+          txSignature,
+          error: null,
+        });
+      } catch (e) {
+        const msg = (e as Error).message;
+        // Pre-cliff or no-progress is expected. Flag everything else.
+        const isExpected = /CliffNotReached|NothingToClaim/i.test(msg);
+        out.claims.push({
+          allocationName: entry.allocationName,
+          txSignature: null,
+          error: isExpected ? null : msg,
+        });
+      }
     }
     return out;
   }

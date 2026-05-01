@@ -14,16 +14,22 @@ const Allocation = z.object({
   name: z.string().min(1),
   percent: z.number().min(0).max(100),
   vestingMonths: z.number().int().min(0).default(0),
+  /**
+   * Months of cliff before any tokens unlock. After the cliff,
+   * (vestingMonths - cliffMonths) of linear unlock. Defaults to 0 (no cliff).
+   * Always ≤ vestingMonths (auto-clamped post-parse).
+   */
+  cliffMonths: z.number().int().min(0).default(0),
 });
 
 const Token = z.object({
   totalSupply: z.number().positive().default(1_000_000_000),
   decimals: z.number().int().min(0).max(18).default(6),
   allocations: z.array(Allocation).default([
-    { name: "Reserve", percent: 8, vestingMonths: 0 },
-    { name: "Team", percent: 10, vestingMonths: 48 },
-    { name: "Community", percent: 30, vestingMonths: 0 },
-    { name: "Ecosystem", percent: 52, vestingMonths: 0 },
+    { name: "Reserve", percent: 8, vestingMonths: 0, cliffMonths: 0 },
+    { name: "Team", percent: 10, vestingMonths: 48, cliffMonths: 12 },
+    { name: "Community", percent: 30, vestingMonths: 0, cliffMonths: 0 },
+    { name: "Ecosystem", percent: 52, vestingMonths: 0, cliffMonths: 0 },
   ]),
 });
 
@@ -32,6 +38,13 @@ const Staking = z.object({
   maxAPY: z.number().min(0).max(10_000).default(20),
   lockPeriodTicks: z.number().int().min(0).default(0),
   unstakePenaltyPercent: z.number().min(0).max(100).default(0),
+  /** Cooldown ticks between request_unstake and complete_unstake. */
+  unstakeCooldownTicks: z.number().int().min(0).default(1),
+  /**
+   * Fraction of total_staked emitted into the reward vault per tick. 0.001 ≈
+   * 0.1%. Used to model emissions / inflation that funds yield over long runs.
+   */
+  rewardEmissionRate: z.number().min(0).max(1).default(0),
 });
 
 const Amm = z.object({
@@ -56,12 +69,22 @@ const Stablecoin = z
   })
   .optional();
 
+const VeToken = z
+  .object({
+    enabled: z.boolean().default(false),
+    maxLockMonths: z.number().int().positive().default(48),
+    voteWeightCurve: z.enum(["linear-decay", "constant"]).default("linear-decay"),
+    boostMultiplier: z.number().positive().default(2.5),
+  })
+  .optional();
+
 export const SimulationConfigSchema = z.object({
   token: Token.default({} as never),
   staking: Staking.default({} as never),
   amm: Amm.default({} as never),
   governance: Governance.default({} as never),
   stablecoin: Stablecoin,
+  veToken: VeToken,
 });
 
 export type SimulationConfigParsed = z.infer<typeof SimulationConfigSchema>;
@@ -132,5 +155,12 @@ export function parseExtractedConfig(raw: unknown): {
 } {
   const extractedFields = extractedFieldPaths(raw);
   const config = SimulationConfigSchema.parse(raw ?? {});
+  // Post-parse normalization: cliffMonths must not exceed vestingMonths.
+  // If the LLM returns a 12-month cliff with 0 vesting (a common slip),
+  // we clamp the cliff to 0 so downstream tick math doesn't divide by zero.
+  for (const alloc of config.token.allocations) {
+    if (alloc.vestingMonths === 0) alloc.cliffMonths = 0;
+    else if (alloc.cliffMonths > alloc.vestingMonths) alloc.cliffMonths = alloc.vestingMonths;
+  }
   return { config, extractedFields };
 }

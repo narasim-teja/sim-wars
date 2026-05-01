@@ -101,6 +101,8 @@ fn setup_fixture(
             ticks_per_year: 100,
             lock_period_ticks: 0,
             unstake_cooldown_ticks: 0,
+            max_apy_bps: 0,
+            unstake_penalty_bps: 0,
         },
     );
     send_ix(svm, ix, &authority, &[]).expect("staking init_pool");

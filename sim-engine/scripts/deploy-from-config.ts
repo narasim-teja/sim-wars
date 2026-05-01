@@ -60,6 +60,7 @@ import {
   deriveMintAuthority,
   deriveTokenomicsConfig,
   deriveAllocation,
+  deriveVesting,
   derivePool,
   derivePoolAuthority,
   deriveVaultA,
@@ -72,6 +73,7 @@ import {
   nameToBytes,
   type Deployment,
   type AgentWalletEntry,
+  type VestingEntry,
   KEYS_DIR,
   LOCAL_DIR,
 } from "../src/chain/sdk";
@@ -197,13 +199,36 @@ async function main() {
     .rpc();
 
   // ─── 2. Configure tokenomics + create allocations ──────────────────────
+  // 1 month ≈ 30 ticks. The schema's `vestingMonths` is TOTAL time-from-TGE
+  // until fully unlocked. The on-chain program treats `vesting_ticks` as the
+  // POST-CLIFF linear duration only, so we translate:
+  //   vesting_ticks (program) = (vestingMonths - cliffMonths) * 30
+  //   cliff_ticks   (program) = cliffMonths * 30
+  // Full unlock then occurs at start_tick + cliff_ticks + vesting_ticks
+  //                         = start_tick + vestingMonths * 30, matching intent.
+  // Lump-sum cliffs (vestingMonths == cliffMonths) get vesting_ticks=1 so the
+  // program's "ticks_after_cliff >= vesting_duration" branch returns total.
   const totalSupplyAtoms = toAtoms(config.token.totalSupply);
-  const allocInputs = config.token.allocations.map((a) => ({
-    name: nameToBytes(a.name),
-    percentBps: Math.round(a.percent * 100),
-    vestingTicks: a.vestingMonths === 0 ? 0 : a.vestingMonths * 30,
-    cliffTicks: 0,
-  }));
+  const allocInputs = config.token.allocations.map((a) => {
+    const vestingMonths = Math.max(0, a.vestingMonths);
+    const cliffMonths = Math.min(Math.max(0, a.cliffMonths ?? 0), vestingMonths);
+    const cliffTicks = cliffMonths === 0 ? 0 : cliffMonths * 30;
+    const linearMonths = Math.max(0, vestingMonths - cliffMonths);
+    // Lump-sum cliff edge case: linear=0 would divide-by-zero in the program.
+    // Use linearTicks=1 so the very next tick after the cliff fully unlocks.
+    const linearTicks = vestingMonths === 0
+      ? 0
+      : linearMonths === 0
+        ? 1
+        : linearMonths * 30;
+    return {
+      name: nameToBytes(a.name),
+      displayName: a.name,
+      percentBps: Math.round(a.percent * 100),
+      vestingTicks: linearTicks,
+      cliffTicks,
+    };
+  });
   const totalBps = allocInputs.reduce((s, a) => s + a.percentBps, 0);
   if (totalBps !== 10_000) {
     // The on-chain program enforces == 10000. Auto-rebalance the largest
@@ -218,7 +243,12 @@ async function main() {
   }
 
   await tokenMint.methods
-    .configureTokenomics(totalSupplyAtoms, allocInputs as any)
+    .configureTokenomics(totalSupplyAtoms, allocInputs.map((a) => ({
+      name: a.name,
+      percentBps: a.percentBps,
+      vestingTicks: a.vestingTicks,
+      cliffTicks: a.cliffTicks,
+    })) as any)
     .accounts({ authority: payer.publicKey, config: tokenomicsConfig })
     .rpc();
 
@@ -236,15 +266,36 @@ async function main() {
   }
 
   // ─── 3. Mint deployer's LUNA pool seed ─────────────────────────────────
-  const ecosystem = allocInputs.reduce((largest, a) =>
-    a.percentBps > largest.percentBps ? a : largest, allocInputs[0]!);
-  const [ecosystemPda] = deriveAllocation(tokenomicsConfig, ecosystem.name);
+  // Pool seed + agent funding must come from a LIQUID (unvested) allocation.
+  // Picking a vested bucket here would either silently bypass the lockup or
+  // (correctly) exceed `allocated` once we also create a vesting account.
+  const liquidAllocs = allocInputs.filter((a) => a.vestingTicks === 0);
+  if (liquidAllocs.length === 0) {
+    throw new Error(
+      "[deploy] every allocation is vested — there is no liquid bucket to seed pool liquidity from. " +
+        "At least one allocation must have vestingMonths=0 (e.g. an 'Ecosystem' or 'Liquidity' bucket).",
+    );
+  }
+  const seedAlloc = liquidAllocs.reduce(
+    (largest, a) => (a.percentBps > largest.percentBps ? a : largest),
+    liquidAllocs[0]!,
+  );
+  const [seedAllocPda] = deriveAllocation(tokenomicsConfig, seedAlloc.name);
   const deployerLunaAta = await getOrCreateAssociatedTokenAccount(
     provider.connection, payer, lunaMint, payer.publicKey,
   );
 
   const agentTokenSum = agents.reduce((s, a) => s + a.initialCapital.token, 0);
   const lunaToMintUi = config.amm.initialLiquidity + agentTokenSum;
+  // Defensive: don't mint more than the seed allocation has room for.
+  const seedAllocCapUi = (config.token.totalSupply * seedAlloc.percentBps) / 10_000;
+  if (lunaToMintUi > seedAllocCapUi) {
+    throw new Error(
+      `[deploy] liquid seed allocation '${seedAlloc.displayName}' (${seedAlloc.percentBps} bps = ${seedAllocCapUi} tokens) ` +
+        `cannot fund pool ${config.amm.initialLiquidity} + agents ${agentTokenSum} = ${lunaToMintUi}. ` +
+        `Increase the liquid bucket or reduce agent initialCapital totals.`,
+    );
+  }
   await tokenMint.methods
     .distributeAllocation(toAtoms(lunaToMintUi))
     .accounts({
@@ -252,11 +303,65 @@ async function main() {
       config: tokenomicsConfig,
       mint: lunaMint,
       mintAuthority,
-      allocation: ecosystemPda,
+      allocation: seedAllocPda,
       recipientAta: deployerLunaAta.address,
       tokenProgram: TOKEN_PROGRAM_ID,
     })
     .rpc();
+
+  // ─── 3b. Create vesting accounts for vested allocations ─────────────────
+  // Each vested allocation gets a unique beneficiary keypair (deployer-owned)
+  // because the on-chain VestingAccount PDA seeds = ["vesting", config, beneficiary],
+  // so re-using the deployer pubkey across allocations would collide.
+  // Cliff + linear unlock is enforced by `claim_vested` against `current_tick`.
+  const vestingDir = args.simId
+    ? join(LOCAL_DIR, "runs", args.simId, "keys")
+    : KEYS_DIR;
+  if (!existsSync(vestingDir)) mkdirSync(vestingDir, { recursive: true });
+
+  const vestingEntries: VestingEntry[] = [];
+  for (const alloc of allocInputs) {
+    if (alloc.vestingTicks === 0) continue;
+    const allocCapUi = (config.token.totalSupply * alloc.percentBps) / 10_000;
+    if (allocCapUi <= 0) continue;
+
+    const beneficiaryPath = join(vestingDir, `_vesting_${alloc.displayName.replace(/\s+/g, "_")}.json`);
+    const { keypair: beneficiaryKp } = loadOrCreateKeypair(beneficiaryPath);
+    const beneficiaryAta = await getOrCreateAssociatedTokenAccount(
+      provider.connection, payer, lunaMint, beneficiaryKp.publicKey,
+    );
+    const [allocPda] = deriveAllocation(tokenomicsConfig, alloc.name);
+    const [vestingPda] = deriveVesting(tokenomicsConfig, beneficiaryKp.publicKey);
+
+    await tokenMint.methods
+      .createVesting(toAtoms(allocCapUi), new BN(0))
+      .accounts({
+        authority: payer.publicKey,
+        config: tokenomicsConfig,
+        mint: lunaMint,
+        allocation: allocPda,
+        beneficiary: beneficiaryKp.publicKey,
+        vesting: vestingPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    vestingEntries.push({
+      allocationName: alloc.displayName,
+      vesting: vestingPda.toBase58(),
+      beneficiary: beneficiaryKp.publicKey.toBase58(),
+      beneficiaryKeypairPath: beneficiaryPath,
+      beneficiaryAta: beneficiaryAta.address.toBase58(),
+      totalAmount: allocCapUi,
+      startTick: 0,
+      cliffTicks: alloc.cliffTicks,
+      vestingTicks: alloc.vestingTicks,
+    });
+    console.log(
+      `[deploy] vesting created for ${alloc.displayName}: ${allocCapUi} tokens, ` +
+        `cliff ${alloc.cliffTicks}t, total ${alloc.vestingTicks}t`,
+    );
+  }
 
   // ─── 4. Mock UST mint ─────────────────────────────────────────────────
   console.log("[deploy] create UST mint…");
@@ -328,11 +433,21 @@ async function main() {
     const [stakeVault] = deriveStakeVault(stakingPool);
     const [rewardVault] = deriveRewardVault(stakingPool);
     const baseApyBps = Math.round(config.staking.baseAPY * 100);
+    // max_apy_bps must be >= base_apy_bps (program enforces). Default to base
+    // when extraction didn't pull a separate maxAPY.
+    const maxApyBps = Math.max(
+      baseApyBps,
+      Math.round((config.staking.maxAPY ?? config.staking.baseAPY) * 100),
+    );
+    const penaltyBps = Math.min(
+      10_000,
+      Math.round(Math.max(0, config.staking.unstakePenaltyPercent ?? 0) * 100),
+    );
     const ticksPerYear = 365;
     const lockTicks = Math.max(0, Math.floor(config.staking.lockPeriodTicks));
-    const cooldownTicks = 1; // small cooldown; engine treats as immediate
+    const cooldownTicks = Math.max(0, Math.floor(config.staking.unstakeCooldownTicks ?? 1));
     await staking.methods
-      .initializePool(baseApyBps, ticksPerYear, lockTicks, cooldownTicks)
+      .initializePool(baseApyBps, ticksPerYear, lockTicks, cooldownTicks, maxApyBps, penaltyBps)
       .accounts({
         authority: payer.publicKey,
         stakeMint: lunaMint,
@@ -365,6 +480,9 @@ async function main() {
       stakeMint: lunaMint.toBase58(),
       unstakeCooldownTicks: cooldownTicks,
       lockPeriodTicks: lockTicks,
+      maxApyBps,
+      unstakePenaltyBps: penaltyBps,
+      rewardEmissionRate: Math.max(0, config.staking.rewardEmissionRate ?? 0),
     };
 
     // ─── 7. Optional governance ─────────────────────────────────────────
@@ -452,6 +570,7 @@ async function main() {
       aIsLuna: true,
     },
     config: { address: tokenomicsConfig.toBase58() },
+    vesting: vestingEntries.length > 0 ? vestingEntries : undefined,
     staking: stakingDeployment,
     ...(args.withGovernance ? {
       governance: {

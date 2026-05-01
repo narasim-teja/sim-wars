@@ -94,6 +94,46 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
       }
     }
 
+    // Reward-vault inflation: emit fresh tokens per tick into the reward vault
+    // so long-running sims don't dry up the once-seeded reward pool.
+    // Amount = total_staked × rewardEmissionRate (bounded by deployer's bag).
+    if (chainExecutor && chainExecutor.hasStaking()) {
+      const dep = chainExecutor.getDeployment();
+      const rate = dep.staking?.rewardEmissionRate ?? 0;
+      if (rate > 0) {
+        const totalStaked = stateManager.getTotalStaked();
+        const emit = totalStaked * rate;
+        if (emit > 0) {
+          try {
+            await chainExecutor.fundRewardVault(emit);
+          } catch (e) {
+            const msg = (e as Error).message;
+            // Deployer ran out of LUNA → emissions stop. Don't crash the sim;
+            // the post-mortem will show resilience tanking from yield drying up.
+            console.warn(`  [emissions] tick=${tickNum} fund_reward_vault failed: ${msg.slice(0, 80)}`);
+          }
+        }
+      }
+    }
+
+    // Vesting: try to mint anything that just unlocked. The token-mint program
+    // enforces cliff + linear unlock against `current_tick`; pre-cliff and
+    // no-progress ticks are silently swallowed inside claimAllVested.
+    if (chainExecutor && chainExecutor.hasVesting()) {
+      try {
+        const result = await chainExecutor.claimAllVested(tickNum);
+        for (const claim of result.claims) {
+          if (claim.txSignature) {
+            console.log(`  [vesting] ${claim.allocationName} unlocked at tick ${tickNum} (${claim.txSignature.slice(0, 8)}…)`);
+          } else if (claim.error) {
+            console.warn(`  [vesting] ${claim.allocationName} claim failed: ${claim.error}`);
+          }
+        }
+      } catch (e) {
+        console.error(`  chain claimAllVested(${tickNum}) failed:`, (e as Error).message);
+      }
+    }
+
     // Distribute staking rewards
     const rewards = stateManager.computeStakingRewards();
     const rewardsPaid = orchestrator.applyStakingRewards(rewards);

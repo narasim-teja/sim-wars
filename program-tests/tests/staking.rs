@@ -54,6 +54,18 @@ fn setup_pool(
     lock_period_ticks: u32,
     unstake_cooldown_ticks: u32,
 ) -> StFixture {
+    setup_pool_with_extras(svm, base_apy_bps, ticks_per_year, lock_period_ticks, unstake_cooldown_ticks, base_apy_bps, 0)
+}
+
+fn setup_pool_with_extras(
+    svm: &mut litesvm::LiteSVM,
+    base_apy_bps: u16,
+    ticks_per_year: u32,
+    lock_period_ticks: u32,
+    unstake_cooldown_ticks: u32,
+    max_apy_bps: u16,
+    unstake_penalty_bps: u16,
+) -> StFixture {
     let authority = new_funded_keypair(svm, 100_000_000_000);
     let mint = create_mint(svm, &authority, 6);
 
@@ -80,6 +92,8 @@ fn setup_pool(
             ticks_per_year,
             lock_period_ticks,
             unstake_cooldown_ticks,
+            max_apy_bps,
+            unstake_penalty_bps,
         },
     );
     send_ix(svm, ix, &authority, &[]).expect("initialize_pool");
@@ -193,6 +207,7 @@ fn do_complete_unstake(
             stake_account,
             owner: user.pubkey(),
             stake_vault: f.stake_vault,
+            reward_vault: f.reward_vault,
             user_ata,
             token_program: spl_token::ID,
         },
@@ -370,4 +385,82 @@ fn claim_capped_by_empty_reward_vault() {
         .expect_err("empty vault");
     let logs = format!("{:?}", err);
     assert!(logs.contains("RewardVaultEmpty"), "got: {logs}");
+}
+
+fn read_amount(svm: &litesvm::LiteSVM, ata: &Pubkey) -> u64 {
+    let acct = svm.get_account(ata).expect("ata exists");
+    u64::from_le_bytes(acct.data[64..72].try_into().unwrap())
+}
+
+#[test]
+fn unstake_penalty_routes_slashed_amount_to_reward_vault() {
+    let mut svm = setup_svm();
+    // 0% APY (no reward accrual to confuse the reward-vault balance check),
+    // no lock, no cooldown, 5% (500 bps) early-exit penalty.
+    let f = setup_pool_with_extras(&mut svm, 0, 100, 0, 0, 0, 500);
+    let (user, user_ata, stake_account) = setup_user(&mut svm, &f, 1_000_000);
+
+    do_stake(&mut svm, &f, &user, user_ata, stake_account, 1_000_000).expect("stake");
+    let user_before_unstake = read_amount(&svm, &user_ata);
+    let reward_before = read_amount(&svm, &f.reward_vault);
+    assert_eq!(user_before_unstake, 0, "all tokens are now in stake vault");
+    assert_eq!(reward_before, 0, "reward vault starts empty");
+
+    do_request_unstake(&mut svm, &f, &user, stake_account, 1_000_000).expect("request");
+    do_complete_unstake(&mut svm, &f, &user, user_ata, stake_account).expect("complete");
+
+    let user_after = read_amount(&svm, &user_ata);
+    let reward_after = read_amount(&svm, &f.reward_vault);
+    // 5% penalty on 1M = 50_000 to reward vault, 950_000 to user.
+    assert_eq!(user_after, 950_000, "user receives 95% of staked");
+    assert_eq!(reward_after, 50_000, "reward vault receives the slashed 5%");
+}
+
+#[test]
+fn unstake_penalty_zero_pays_full_amount() {
+    let mut svm = setup_svm();
+    let f = setup_pool_with_extras(&mut svm, 0, 100, 0, 0, 0, 0);
+    let (user, user_ata, stake_account) = setup_user(&mut svm, &f, 500_000);
+    do_stake(&mut svm, &f, &user, user_ata, stake_account, 500_000).expect("stake");
+    do_request_unstake(&mut svm, &f, &user, stake_account, 500_000).expect("request");
+    do_complete_unstake(&mut svm, &f, &user, user_ata, stake_account).expect("complete");
+    assert_eq!(read_amount(&svm, &user_ata), 500_000, "no penalty → full payout");
+    assert_eq!(read_amount(&svm, &f.reward_vault), 0, "reward vault untouched");
+}
+
+#[test]
+fn initialize_pool_rejects_max_below_base() {
+    let mut svm = setup_svm();
+    let authority = new_funded_keypair(&mut svm, 100_000_000_000);
+    let mint = create_mint(&mut svm, &authority, 6);
+    let (pool, _) = pool_seeds(&mint);
+    let (pool_authority, _) = pool_authority_seeds(&pool);
+    let (stake_vault, _) = stake_vault_seeds(&pool);
+    let (reward_vault, _) = reward_vault_seeds(&pool);
+
+    let ix = anchor_ix(
+        st_pid(),
+        staking::accounts::InitializePool {
+            authority: authority.pubkey(),
+            stake_mint: mint,
+            pool,
+            pool_authority,
+            stake_vault,
+            reward_vault,
+            system_program: system_program::ID,
+            token_program: spl_token::ID,
+            rent: rent::ID,
+        },
+        staking::instruction::InitializePool {
+            base_apy_bps: 1500,
+            ticks_per_year: 365,
+            lock_period_ticks: 0,
+            unstake_cooldown_ticks: 0,
+            max_apy_bps: 1000, // < base, should bounce
+            unstake_penalty_bps: 0,
+        },
+    );
+    let err = send_ix(&mut svm, ix, &authority, &[]).expect_err("max < base must fail");
+    let logs = format!("{:?}", err);
+    assert!(logs.contains("MaxBelowBase"), "got: {logs}");
 }

@@ -12,6 +12,16 @@ export class StateManager {
   private stakingAPY: number;
   private recentLargeTrades: { agentId: string; action: string; amount: number }[] = [];
 
+  /**
+   * veToken-style locks. When `config.veToken.enabled`, `stake()` callers can
+   * pass `lockTicks` to commit tokens for a duration. `unstake` is refused
+   * until `currentTick >= lockedUntilTick`. Maps agent ID → unlock tick.
+   *
+   * For protocols without veToken, this map stays empty and unstake works
+   * the way it always did.
+   */
+  private lockUntilTick: Map<string, number> = new Map();
+
   // Pool state (read from chain or simulated)
   private poolReserveA: number;
   private poolReserveB: number;
@@ -122,22 +132,74 @@ export class StateManager {
 
   /**
    * Simulate staking (in-memory for Phase 1).
+   *
+   * For veToken protocols, callers can pass `lockTicks` to commit tokens for
+   * a duration. The longest active commitment wins — restaking with a longer
+   * lock extends `lockedUntilTick`; restaking with a shorter lock leaves the
+   * existing one in place.
    */
-  stake(agentId: string, amount: number): void {
+  stake(agentId: string, amount: number, lockTicks?: number): void {
     const current = this.stakingBalances.get(agentId) || 0;
     this.stakingBalances.set(agentId, current + amount);
     this.totalStaked += amount;
+
+    if (lockTicks !== undefined && lockTicks > 0) {
+      const newUnlock = this.currentTick + lockTicks;
+      const existing = this.lockUntilTick.get(agentId) ?? 0;
+      if (newUnlock > existing) this.lockUntilTick.set(agentId, newUnlock);
+    }
   }
 
   /**
-   * Simulate unstaking.
+   * Simulate unstaking. For veToken protocols, returns 0 if the lock hasn't
+   * expired — caller can detect this and treat it as a no-op / "still locked"
+   * outcome rather than success.
    */
   unstake(agentId: string, amount: number): number {
+    if (this.config.veToken?.enabled) {
+      const unlockAt = this.lockUntilTick.get(agentId) ?? 0;
+      if (this.currentTick < unlockAt) return 0;
+    }
     const current = this.stakingBalances.get(agentId) || 0;
     const actual = Math.min(amount, current);
     this.stakingBalances.set(agentId, current - actual);
     this.totalStaked -= actual;
     return actual;
+  }
+
+  /**
+   * Returns the unlock tick for the given agent, or null if no lock is held.
+   * Useful for telemetry + agent prompts ("you can't unstake until tick X").
+   */
+  getUnlockTick(agentId: string): number | null {
+    const t = this.lockUntilTick.get(agentId);
+    return t === undefined ? null : t;
+  }
+
+  /**
+   * Compute the time-weighted vote weight for an agent. For non-veToken
+   * protocols this just returns the staked amount. For veToken with
+   * `linear-decay`, weight = stake × boost × (remaining_lock / max_lock).
+   * For `constant`, weight = stake × boost as long as any lock is active.
+   */
+  getVoteWeight(agentId: string): number {
+    const stake = this.stakingBalances.get(agentId) ?? 0;
+    const ve = this.config.veToken;
+    if (!ve?.enabled) return stake;
+
+    const unlockAt = this.lockUntilTick.get(agentId) ?? 0;
+    const remaining = Math.max(0, unlockAt - this.currentTick);
+    if (remaining === 0) return stake; // expired lock — fall back to stake-weight
+
+    const maxLockTicks = ve.maxLockMonths * 30;
+    if (ve.voteWeightCurve === "constant") {
+      return stake * ve.boostMultiplier;
+    }
+    // linear-decay: full boost at remaining = max, 0 boost at remaining = 0,
+    // floor at 1× so locked stake never weighs less than liquid stake.
+    const fraction = Math.min(1, remaining / maxLockTicks);
+    const multiplier = 1 + (ve.boostMultiplier - 1) * fraction;
+    return stake * multiplier;
   }
 
   /**
@@ -194,6 +256,16 @@ export class StateManager {
     return this.stakingBalances.get(agentId) || 0;
   }
 
+  /** Sum of all per-agent staked balances. Used by emissions scheduler. */
+  getTotalStaked(): number {
+    return this.totalStaked;
+  }
+
+  /** Read-only view of the SimulationConfig — orchestrator uses it for veToken defaults. */
+  getConfig(): SimulationConfig {
+    return this.config;
+  }
+
   // ============================================================
   // In-memory governance — always available, mirrors the on-chain
   // program's semantics (proposal threshold in stake amount, stake-weighted
@@ -235,7 +307,9 @@ export class StateManager {
     const voters = this.votes.get(proposalId)!;
     if (voters.has(voterId)) return null; // no double-vote
 
-    const weight = this.stakingBalances.get(voterId) ?? 0;
+    // veToken vote-weighting: getVoteWeight() applies the boost curve when
+    // the protocol uses time-locked stake; otherwise it returns raw stake.
+    const weight = this.getVoteWeight(voterId);
     if (weight <= 0) return null;
 
     if (support) proposal.votesFor += weight;

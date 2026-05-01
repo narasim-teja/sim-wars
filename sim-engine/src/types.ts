@@ -6,13 +6,36 @@ export interface SimulationConfig {
   token: {
     totalSupply: number;
     decimals: number;
-    allocations: { name: string; percent: number; vestingMonths: number }[];
+    allocations: {
+      name: string;
+      percent: number;
+      vestingMonths: number;
+      /**
+       * Months of cliff before any tokens unlock. After the cliff, the
+       * remaining `vestingMonths - cliffMonths` are released linearly.
+       * 0 means no cliff (linear from t=0). Ignored when `vestingMonths` is 0.
+       */
+      cliffMonths?: number;
+    }[];
   };
   staking: {
     baseAPY: number;
     maxAPY: number;
     lockPeriodTicks: number;
     unstakePenaltyPercent: number;
+    /**
+     * Cooldown between request_unstake and complete_unstake (in ticks).
+     * Optional: defaults to 1 tick when missing — preserves prior behavior
+     * before this field was extracted from the whitepaper.
+     */
+    unstakeCooldownTicks?: number;
+    /**
+     * Per-tick top-up amount for the staking reward vault, expressed as a
+     * fraction of the total staked supply (e.g. 0.001 = 0.1%). Used to model
+     * an emissions schedule so the reward vault doesn't drain during long
+     * runs. 0 disables top-ups (one-shot seeding only). Optional, defaults to 0.
+     */
+    rewardEmissionRate?: number;
   };
   amm: {
     initialLiquidity: number;
@@ -30,6 +53,23 @@ export interface SimulationConfig {
     targetPeg: number;
     mintBurnRatio: number;
     reserveAmount: number;
+  };
+  /**
+   * veToken-style locking. When `enabled`, stake actions take a lock duration
+   * (months); the engine refuses unstake until the lock expires and weights
+   * governance votes by the remaining lock fraction.
+   *
+   * Generalizes Curve veCRV semantics — applies to any protocol whose
+   * whitepaper describes a vote-escrow / time-weighted-stake mechanism.
+   */
+  veToken?: {
+    enabled: boolean;
+    /** Maximum lock duration in months. Curve is 48; many forks use 24 or 12. */
+    maxLockMonths: number;
+    /** "linear-decay" → weight scales with remaining lock; "constant" → fixed boost. */
+    voteWeightCurve: "linear-decay" | "constant";
+    /** Multiplier applied at max-lock; below max-lock weight is interpolated. */
+    boostMultiplier: number;
   };
 }
 

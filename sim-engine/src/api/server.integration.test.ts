@@ -54,6 +54,37 @@ afterAll(() => {
 });
 
 describe("api server → worker integration", () => {
+  it("expands a roster from agentCount when agents[] is omitted", async () => {
+    const created = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agentCount: 12,
+        rosterPreset: "luna",
+        tickConfig,
+      }),
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { simId: string; agentCount: number };
+    expect(body.agentCount).toBe(12);
+  }, 10000);
+
+  it("rejects agentCount > MAX_AGENTS with 400", async () => {
+    const created = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agentCount: 9999,
+        tickConfig,
+      }),
+    });
+    expect(created.status).toBe(400);
+    const body = (await created.json()) as { error: string };
+    expect(body.error).toContain("MAX_AGENTS");
+  }, 10000);
+
   it("spawns a worker that runs to completion and streams events via WS", async () => {
     const created = await fetch(`http://localhost:${PORT}/api/sim`, {
       method: "POST",

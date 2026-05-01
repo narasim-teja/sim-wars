@@ -8,6 +8,8 @@ import type { StatusSnapshot } from "../ipc/event-writer";
 import { buildLLMClient } from "../llm/factory";
 import { draftScenario } from "../scenarios/generator";
 import { perRunDeploymentPath } from "../chain/sdk";
+import { expandRoster, type RosterPreset } from "../agents/roster";
+import { MAX_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
 
 interface SpawnedRun {
   simId: string;
@@ -42,23 +44,68 @@ function corsHeaders(): Record<string, string> {
 
 interface CreateSimBody {
   config: SimulationConfig;
-  agents: AgentPersona[];
+  /**
+   * Explicit roster — full control. When omitted, the server expands a
+   * deterministic roster sized by `agentCount` using `rosterPreset`.
+   */
+  agents?: AgentPersona[];
+  /** When `agents` is omitted, expand a roster of this size. Defaults to 20. */
+  agentCount?: number;
+  /** Archetype mix used by the expander. Defaults to "luna". */
+  rosterPreset?: RosterPreset;
   tickConfig: TickConfig;
   onChain?: boolean;
 }
 
 async function handleCreate(req: Request): Promise<Response> {
   const body = (await req.json()) as CreateSimBody;
-  if (!body.config || !body.agents || !body.tickConfig) {
-    return json({ error: "config, agents, tickConfig are required" }, { status: 400 });
+  if (!body.config || !body.tickConfig) {
+    return json({ error: "config and tickConfig are required" }, { status: 400 });
   }
 
   const simId = crypto.randomUUID();
+
+  // Roster: explicit `agents` wins; otherwise expand from agentCount + preset.
+  let resolvedAgents: AgentPersona[];
+  if (Array.isArray(body.agents) && body.agents.length > 0) {
+    resolvedAgents = body.agents;
+  } else {
+    const count = body.agentCount ?? DEFAULT_AGENT_COUNT;
+    if (!Number.isInteger(count) || count <= 0) {
+      return json({ error: `agentCount must be a positive integer, got ${count}` }, { status: 400 });
+    }
+    if (count > MAX_AGENTS) {
+      return json(
+        { error: `agentCount ${count} exceeds MAX_AGENTS=${MAX_AGENTS}. Edit constants.ts to raise the cap.` },
+        { status: 400 },
+      );
+    }
+    try {
+      resolvedAgents = expandRoster({
+        count,
+        preset: body.rosterPreset,
+        simId,
+      });
+    } catch (e) {
+      return json({ error: `roster expansion failed: ${(e as Error).message}` }, { status: 400 });
+    }
+    if (resolvedAgents.length === 0) {
+      return json({ error: "roster expander produced 0 agents — bad ratios?" }, { status: 500 });
+    }
+  }
+
+  // Persist the resolved roster, not the request body, so worker + deploy
+  // script see the exact same agents the API committed to.
+  const persistedBody: CreateSimBody = {
+    ...body,
+    agents: resolvedAgents,
+  };
+
   const paths = pathsFor(simId);
   mkdirSync(paths.commandsDir, { recursive: true });
   mkdirSync(dirname(paths.scenarioFile), { recursive: true });
 
-  writeFileSync(paths.scenarioFile, JSON.stringify(body, null, 2));
+  writeFileSync(paths.scenarioFile, JSON.stringify(persistedBody, null, 2));
   writeFileSync(paths.statusFile, JSON.stringify({ simId, status: "starting", tick: 0, updatedAt: Date.now() }));
   // Touch events file so tailers can open it immediately
   writeFileSync(paths.eventsFile, "");
@@ -71,7 +118,7 @@ async function handleCreate(req: Request): Promise<Response> {
     // Fire-and-forget the deploy → worker chain. The HTTP response returns
     // immediately so the frontend can subscribe to /ws/sim/:id and watch
     // the chain:deploy:* events stream in.
-    runDeployThenWorker(simId, body).catch((err) => {
+    runDeployThenWorker(simId, persistedBody).catch((err) => {
       appendEvent(paths.eventsFile, {
         kind: "chain:deploy:error",
         ts: Date.now(),
@@ -87,7 +134,10 @@ async function handleCreate(req: Request): Promise<Response> {
     spawnWorker(simId);
   }
 
-  return json({ simId, status: "starting" }, { status: 201, headers: corsHeaders() });
+  return json(
+    { simId, status: "starting", agentCount: resolvedAgents.length },
+    { status: 201, headers: corsHeaders() },
+  );
 }
 
 function appendEvent(eventsFile: string, event: object): void {
