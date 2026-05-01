@@ -319,6 +319,19 @@ export class StateManager {
   }
 
   /**
+   * Remove a proposal by id. Used when the chain-side createProposal failed
+   * and the local mirror needs to roll back so subsequent voters don't
+   * target a phantom proposal. Drops the vote bookkeeping too.
+   */
+  removeProposal(id: number): boolean {
+    const idx = this.proposals.findIndex((p) => p.id === id);
+    if (idx < 0) return false;
+    this.proposals.splice(idx, 1);
+    this.votes.delete(id);
+    return true;
+  }
+
+  /**
    * Latest active proposal — surfaced to agent prompts so voters can
    * act without guessing the most-recent id.
    */

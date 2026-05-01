@@ -1,5 +1,7 @@
 /**
- * Config-driven on-chain bootstrap.
+ * Config-driven on-chain bootstrap. Loads .env from repo root before any
+ * Anchor / Solana code reads process.env so Helius keys + ANCHOR_PROVIDER_URL
+ * are picked up regardless of which directory `bun run` was invoked from.
  *
  * Takes a scenario JSON file (the same shape we POST to /api/sim:
  *   { config: SimulationConfig, agents: AgentPersona[], tickConfig, onChain? })
@@ -26,6 +28,7 @@
  * Designed to be invoked both from the CLI and from the API server's child-spawn
  * path (server.ts spawns this as a subprocess when POST /api/sim has onChain=true).
  */
+import "../src/bootstrap";
 import {
   Keypair,
   PublicKey,
@@ -152,12 +155,94 @@ function loadOrCreateKeypair(path: string): { keypair: Keypair; created: boolean
   return { keypair: kp, created: true };
 }
 
+/**
+ * Bounded-concurrency map. Solana RPC + the local validator can take ~30
+ * concurrent in-flight calls before throughput tanks (TPS ceilings, leader
+ * scheduling). Caller picks the limit based on the backend (Helius can
+ * take more; localnet wants fewer).
+ */
+async function pmapBounded<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+  const workerCount = Math.min(limit, items.length);
+  for (let w = 0; w < workerCount; w++) {
+    workers.push((async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i]!, i);
+      }
+    })());
+  }
+  await Promise.all(workers);
+  return out;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { config, agents } = loadScenario(args.scenarioPath);
-  const decimals = config.token.decimals ?? 6;
-  const SCALE = 10 ** decimals;
-  const toAtoms = (a: number) => new BN(Math.floor(a * SCALE));
+
+  // Clamp decimals to a Solana SPL practical max (9). Whitepapers from EVM
+  // ecosystems (Curve, Aave, etc.) often specify 18 decimals; on Solana that
+  // overflows u64 (max ~1.8e19) for any non-trivial supply × scale product
+  // and overflows JS Number safe-int range (2^53) before BN even sees it.
+  // 9 decimals is sufficient resolution for fees + per-tick rewards in a sim.
+  const rawDecimals = config.token.decimals ?? 6;
+  const decimals = Math.min(9, Math.max(0, rawDecimals));
+  if (decimals !== rawDecimals) {
+    console.warn(`[deploy] clamped token decimals ${rawDecimals} → ${decimals} (Solana SPL practical max)`);
+  }
+  const SCALE_BI = 10n ** BigInt(decimals);
+  // BigInt-safe UI-units → atoms. Uses Number.toFixed to convert the float
+  // into a fixed-point string with `decimals` fractional digits, then turns
+  // the resulting digit string into a BN. Avoids JS Number overflow for very
+  // large totalSupply × 10^decimals products.
+  const toAtoms = (a: number): BN => {
+    if (!isFinite(a)) throw new Error(`toAtoms: non-finite input ${a}`);
+    if (a === 0) return new BN(0);
+    const negative = a < 0;
+    const fixed = Math.abs(a).toFixed(decimals);
+    const [whole, frac = ""] = fixed.split(".");
+    const fracPadded = (frac + "0".repeat(decimals)).slice(0, decimals);
+    const digits = (whole + fracPadded).replace(/^0+/, "") || "0";
+    return new BN(negative ? "-" + digits : digits);
+  };
+  // BigInt sister of toAtoms — used by SPL Token mintTo/transfer which take
+  // a bigint amount. Same fixed-point string conversion to avoid Number
+  // precision loss on large supplies.
+  const toAtomsBI = (a: number): bigint => {
+    if (!isFinite(a)) throw new Error(`toAtomsBI: non-finite input ${a}`);
+    if (a === 0) return 0n;
+    const negative = a < 0;
+    const fixed = Math.abs(a).toFixed(decimals);
+    const [whole, frac = ""] = fixed.split(".");
+    const fracPadded = (frac + "0".repeat(decimals)).slice(0, decimals);
+    const digits = (whole + fracPadded).replace(/^0+/, "") || "0";
+    return negative ? -BigInt(digits) : BigInt(digits);
+  };
+  void SCALE_BI; // reserved for future BigInt-native arithmetic
+
+  // Defensive coalescing — when extraction returns `amm: {}` / `governance: {}`
+  // (Zod inner defaults sometimes don't apply through the API round-trip),
+  // fall back to the same values as the schema's defaults so the deploy still
+  // produces a valid market. Renamed to govCfg to avoid shadowing the
+  // governance Program client created later.
+  const amm = {
+    initialLiquidity: config.amm?.initialLiquidity ?? 100_000_000,
+    initialPrice: config.amm?.initialPrice ?? 1,
+    feeTier: config.amm?.feeTier ?? 0.3,
+  };
+  const govCfg = {
+    proposalThresholdPercent: config.governance?.proposalThresholdPercent ?? 0.1,
+    quorumPercent: config.governance?.quorumPercent ?? 10,
+    votingPeriodTicks: config.governance?.votingPeriodTicks ?? 5,
+    timelockTicks: config.governance?.timelockTicks ?? 0,
+  };
 
   const provider = getProvider();
   const payer = (provider.wallet as any).payer as Keypair;
@@ -286,13 +371,33 @@ async function main() {
   );
 
   const agentTokenSum = agents.reduce((s, a) => s + a.initialCapital.token, 0);
-  const lunaToMintUi = config.amm.initialLiquidity + agentTokenSum;
+  const totalStakedExpected = agents.reduce(
+    (s, a) => s + a.initialCapital.token * (a.initialCapital.stakedFraction ?? 0),
+    0,
+  );
+  // Reward-vault seed: gets transferred into reward_vault at deploy time as
+  // initial yield buffer. Sized to ~10% of total agent tokens.
+  const rewardSeedTarget = args.withStaking
+    ? Math.max(1_000_000, agentTokenSum * 0.10)
+    : 0;
+  // Inflation budget: stays in the deployer's LUNA ATA so per-tick
+  // `fundRewardVault` calls have source funds to pull from. Without this the
+  // deployer ATA drains during deploy (AMM seed + reward seed + agent
+  // funding consume everything minted) and every per-tick emission fails
+  // with "insufficient funds". Sized to cover 200 ticks of max-rate emissions
+  // at the expected initial stake — a generous overhead because the actual
+  // total_staked grows during the sim as agents stake more.
+  const emissionRate = config.staking.rewardEmissionRate ?? 0;
+  const inflationBudget = args.withStaking && emissionRate > 0
+    ? Math.max(0, totalStakedExpected * emissionRate * 200)
+    : 0;
+  const lunaToMintUi = amm.initialLiquidity + agentTokenSum + rewardSeedTarget + inflationBudget;
   // Defensive: don't mint more than the seed allocation has room for.
   const seedAllocCapUi = (config.token.totalSupply * seedAlloc.percentBps) / 10_000;
   if (lunaToMintUi > seedAllocCapUi) {
     throw new Error(
       `[deploy] liquid seed allocation '${seedAlloc.displayName}' (${seedAlloc.percentBps} bps = ${seedAllocCapUi} tokens) ` +
-        `cannot fund pool ${config.amm.initialLiquidity} + agents ${agentTokenSum} = ${lunaToMintUi}. ` +
+        `cannot fund pool ${amm.initialLiquidity} + agents ${agentTokenSum} + reward ${rewardSeedTarget} + inflation ${inflationBudget} = ${lunaToMintUi}. ` +
         `Increase the liquid bucket or reduce agent initialCapital totals.`,
     );
   }
@@ -319,12 +424,12 @@ async function main() {
     : KEYS_DIR;
   if (!existsSync(vestingDir)) mkdirSync(vestingDir, { recursive: true });
 
-  const vestingEntries: VestingEntry[] = [];
-  for (const alloc of allocInputs) {
-    if (alloc.vestingTicks === 0) continue;
+  const vestedAllocs = allocInputs.filter((a) => a.vestingTicks > 0 && (config.token.totalSupply * a.percentBps) / 10_000 > 0);
+  // Vesting accounts can be created in parallel — each one writes to a
+  // distinct PDA (seeds = ["vesting", config, beneficiary]) and pays from
+  // the deployer's lamport balance, which is shared but non-conflicting.
+  const vestingEntries: VestingEntry[] = await pmapBounded(vestedAllocs, 10, async (alloc) => {
     const allocCapUi = (config.token.totalSupply * alloc.percentBps) / 10_000;
-    if (allocCapUi <= 0) continue;
-
     const beneficiaryPath = join(vestingDir, `_vesting_${alloc.displayName.replace(/\s+/g, "_")}.json`);
     const { keypair: beneficiaryKp } = loadOrCreateKeypair(beneficiaryPath);
     const beneficiaryAta = await getOrCreateAssociatedTokenAccount(
@@ -346,7 +451,11 @@ async function main() {
       })
       .rpc();
 
-    vestingEntries.push({
+    console.log(
+      `[deploy] vesting created for ${alloc.displayName}: ${allocCapUi} tokens, ` +
+        `cliff ${alloc.cliffTicks}t, total ${alloc.vestingTicks}t`,
+    );
+    return {
       allocationName: alloc.displayName,
       vesting: vestingPda.toBase58(),
       beneficiary: beneficiaryKp.publicKey.toBase58(),
@@ -356,12 +465,8 @@ async function main() {
       startTick: 0,
       cliffTicks: alloc.cliffTicks,
       vestingTicks: alloc.vestingTicks,
-    });
-    console.log(
-      `[deploy] vesting created for ${alloc.displayName}: ${allocCapUi} tokens, ` +
-        `cliff ${alloc.cliffTicks}t, total ${alloc.vestingTicks}t`,
-    );
-  }
+    };
+  });
 
   // ─── 4. Mock UST mint ─────────────────────────────────────────────────
   console.log("[deploy] create UST mint…");
@@ -370,10 +475,10 @@ async function main() {
     provider.connection, payer, ustMint, payer.publicKey,
   );
   const agentUsdcSum = agents.reduce((s, a) => s + a.initialCapital.usdc, 0);
-  const ustToMintUi = config.amm.initialLiquidity * config.amm.initialPrice + agentUsdcSum;
+  const ustToMintUi = amm.initialLiquidity * amm.initialPrice + agentUsdcSum;
   await mintTo(
     provider.connection, payer, ustMint, deployerUstAta.address, payer,
-    BigInt(Math.floor(ustToMintUi * SCALE)),
+    toAtomsBI(ustToMintUi),
   );
 
   // ─── 5. AMM pool ──────────────────────────────────────────────────────
@@ -384,7 +489,7 @@ async function main() {
   const [vaultA] = deriveVaultA(pool);
   const [vaultB] = deriveVaultB(pool);
   const lpMintKp = Keypair.generate();
-  const feeBps = Math.round(config.amm.feeTier * 100);
+  const feeBps = Math.round(amm.feeTier * 100);
 
   await ammDex.methods
     .initializePool(feeBps, 0)
@@ -408,7 +513,7 @@ async function main() {
     provider.connection, payer, lpMintKp.publicKey, payer.publicKey,
   );
   await ammDex.methods
-    .addLiquidity(toAtoms(config.amm.initialLiquidity), toAtoms(config.amm.initialLiquidity * config.amm.initialPrice), new BN(0))
+    .addLiquidity(toAtoms(amm.initialLiquidity), toAtoms(amm.initialLiquidity * amm.initialPrice), new BN(0))
     .accounts({
       provider: payer.publicKey,
       pool,
@@ -462,14 +567,13 @@ async function main() {
       .rpc();
 
     // Seed the reward vault from the deployer's LUNA ATA so claim_rewards has
-    // something to pay out.
-    const rewardSeedUi = Math.min(
-      lunaToMintUi * 0.05,                  // ≤ 5% of pool seed
-      Math.max(1_000_000, agentTokenSum * 0.10), // or ≥ 10% of agents' bag
-    );
+    // something to pay out. The amount is `rewardSeedTarget` (computed up
+    // front and already added to lunaToMintUi), so the transfer cannot starve
+    // the per-agent funding loop that runs after this.
+    const rewardSeedUi = rewardSeedTarget;
     await transfer(
       provider.connection, payer, deployerLunaAta.address, rewardVault, payer,
-      BigInt(Math.floor(rewardSeedUi * SCALE)),
+      toAtomsBI(rewardSeedUi),
     );
     stakingDeployment = {
       program: STAKING_PROGRAM_ID.toBase58(),
@@ -491,17 +595,17 @@ async function main() {
       const gov = getGovernanceProgram(provider);
       const [governance] = deriveGovernance(stakingPool);
       const proposalThresholdAtoms = toAtoms(
-        config.token.totalSupply * (config.governance.proposalThresholdPercent / 100),
+        config.token.totalSupply * (govCfg.proposalThresholdPercent / 100),
       );
       const quorumAtoms = toAtoms(
-        config.token.totalSupply * (config.governance.quorumPercent / 100),
+        config.token.totalSupply * (govCfg.quorumPercent / 100),
       );
       await gov.methods
         .initializeGovernance(
           proposalThresholdAtoms,
           quorumAtoms,
-          config.governance.votingPeriodTicks,
-          config.governance.timelockTicks,
+          govCfg.votingPeriodTicks,
+          govCfg.timelockTicks,
         )
         .accounts({
           authority: payer.publicKey,
@@ -517,9 +621,13 @@ async function main() {
   const keysDir = args.simId ? join(LOCAL_DIR, "runs", args.simId, "keys") : KEYS_DIR;
   if (!existsSync(keysDir)) mkdirSync(keysDir, { recursive: true });
 
-  console.log(`[deploy] funding ${agents.length} agents…`);
-  const entries: AgentWalletEntry[] = [];
-  for (const persona of agents) {
+  console.log(`[deploy] funding ${agents.length} agents in parallel…`);
+  const fundT0 = Date.now();
+  // Concurrency: localnet test-validator handles ~25 in-flight RPCs without
+  // dropping. Helius / private RPC can take far more — bumpable via env.
+  // Public devnet should drop to ~8 to avoid rate limiting.
+  const FUND_CONCURRENCY = Number(process.env.DEPLOY_AGENT_CONCURRENCY) || 25;
+  const entries: AgentWalletEntry[] = await pmapBounded(agents, FUND_CONCURRENCY, async (persona) => {
     const keypairPath = join(keysDir, `${persona.id}.json`);
     const { keypair } = loadOrCreateKeypair(keypairPath);
     const balance = await provider.connection.getBalance(keypair.publicKey);
@@ -532,24 +640,35 @@ async function main() {
         console.warn(`[deploy] airdrop failed for ${persona.id}: ${(e as Error).message}`);
       }
     }
-    const lunaAta = await getOrCreateAssociatedTokenAccount(provider.connection, payer, lunaMint, keypair.publicKey);
-    const ustAta = await getOrCreateAssociatedTokenAccount(provider.connection, payer, ustMint, keypair.publicKey);
-    const lunaAtoms = BigInt(Math.floor(persona.initialCapital.token * SCALE));
-    if (lunaAtoms > 0n) {
-      await transfer(provider.connection, payer, deployerLunaAta.address, lunaAta.address, payer, lunaAtoms);
-    }
-    const ustAtoms = BigInt(Math.floor(persona.initialCapital.usdc * SCALE));
-    if (ustAtoms > 0n) {
-      await mintTo(provider.connection, payer, ustMint, ustAta.address, payer, ustAtoms);
-    }
-    entries.push({
+    // ATA creation can run in parallel for the same payer because each call
+    // writes a different PDA; idempotent if the ATA already exists.
+    const [lunaAta, ustAta] = await Promise.all([
+      getOrCreateAssociatedTokenAccount(provider.connection, payer, lunaMint, keypair.publicKey),
+      getOrCreateAssociatedTokenAccount(provider.connection, payer, ustMint, keypair.publicKey),
+    ]);
+    const lunaAtoms = toAtomsBI(persona.initialCapital.token);
+    const ustAtoms = toAtomsBI(persona.initialCapital.usdc);
+    // Token transfers can also run in parallel — they share the deployer's
+    // signer (payer) but Solana only enforces uniqueness on the source ATA's
+    // *current* state per slot, not across in-flight tx. Worst case the
+    // validator queues them; throughput still wins by ~5-10x vs serial.
+    await Promise.all([
+      lunaAtoms > 0n
+        ? transfer(provider.connection, payer, deployerLunaAta.address, lunaAta.address, payer, lunaAtoms)
+        : Promise.resolve(undefined as never),
+      ustAtoms > 0n
+        ? mintTo(provider.connection, payer, ustMint, ustAta.address, payer, ustAtoms)
+        : Promise.resolve(undefined as never),
+    ]);
+    return {
       agentId: persona.id,
       pubkey: keypair.publicKey.toBase58(),
       keypairPath,
       lunaAta: lunaAta.address.toBase58(),
       ustAta: ustAta.address.toBase58(),
-    });
-  }
+    };
+  });
+  console.log(`[deploy]   funded ${agents.length} agents in ${Date.now() - fundT0}ms (concurrency=${FUND_CONCURRENCY})`);
 
   // ─── 9. Write deployment manifest ──────────────────────────────────────
   const deployment: Deployment = {

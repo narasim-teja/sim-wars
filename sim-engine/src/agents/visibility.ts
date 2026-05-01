@@ -102,14 +102,22 @@ export function computeObservableActions(
 }
 
 /**
- * Deterministic batch ordering for observation fidelity. Treasury moves
- * before the insider so the insider's same-tick observation reflects
- * treasury's realized action; the analyst moves last so its action only
- * lands for others on the next tick (combined with the delay-1 rule).
+ * Deterministic batch ordering for observation fidelity:
+ *   treasury → governance_attacker → everyone → insider → analyst
+ *
+ * - treasury before insider so insider's same-tick observation reflects
+ *   treasury's realized action;
+ * - governance_attacker before voters so the proposal exists in the
+ *   state-manager before whales/holders try to cast vote_yes against it
+ *   in the same tick (otherwise voters fall through getLatestActiveProposalId()
+ *   == null and the vote silently fails);
+ * - analyst last so its action only lands for others on the next tick
+ *   (combined with the delay-1 target rule).
  */
 export function orderAgentsForObservation(personas: AgentPersona[]): AgentPersona[] {
   const rank = (p: AgentPersona): number => {
     if (p.type === "treasury") return 0;
+    if (p.type === "governance_attacker") return 0.5;
     if (p.type === "insider") return 2;
     if (p.type === "analyst") return 3;
     return 1;

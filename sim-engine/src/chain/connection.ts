@@ -7,14 +7,44 @@ import { join } from "node:path";
 const DEFAULT_RPC = "http://127.0.0.1:8899";
 const DEFAULT_WALLET = join(homedir(), ".config/solana/id.json");
 
+/**
+ * Expand a leading `~/` to the user's home directory. Solana CLI configs
+ * often store wallet paths with literal tildes; `fs.readFileSync` does not
+ * expand them and silently ENOENTs.
+ */
+function expandTilde(p: string): string {
+  if (p.startsWith("~/") || p === "~") return join(homedir(), p.slice(1));
+  return p;
+}
+
 export function loadKeypair(path: string): Keypair {
-  const raw = JSON.parse(readFileSync(path, "utf8")) as number[];
+  const raw = JSON.parse(readFileSync(expandTilde(path), "utf8")) as number[];
   return Keypair.fromSecretKey(Uint8Array.from(raw));
 }
 
+/**
+ * Resolve the RPC endpoint. Order of precedence:
+ *   1. ANCHOR_PROVIDER_URL (explicit override; Anchor convention)
+ *   2. HELIUS_API_KEY      (auto-builds Helius mainnet URL when set without #1)
+ *   3. localhost           (solana-test-validator default)
+ *
+ * Helius support is the parallel-deploy enabler: localnet caps you at
+ * single-validator throughput, devnet throttles, but Helius takes the
+ * `Promise.all` parallelism we just added and actually serves it.
+ */
+export function resolveRpcUrl(): string {
+  const explicit = process.env.ANCHOR_PROVIDER_URL;
+  if (explicit && explicit.length > 0) return explicit;
+  const helius = process.env.HELIUS_API_KEY;
+  if (helius && helius.length > 0) {
+    const cluster = process.env.HELIUS_CLUSTER ?? "mainnet";
+    return `https://${cluster}.helius-rpc.com/?api-key=${helius}`;
+  }
+  return DEFAULT_RPC;
+}
+
 export function getConnection(): Connection {
-  const url = process.env.ANCHOR_PROVIDER_URL ?? DEFAULT_RPC;
-  return new Connection(url, "confirmed");
+  return new Connection(resolveRpcUrl(), "confirmed");
 }
 
 export function getProvider(): AnchorProvider {

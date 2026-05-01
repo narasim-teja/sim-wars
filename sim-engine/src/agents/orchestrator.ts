@@ -32,6 +32,13 @@ export class AgentOrchestrator {
   private memory: MemoryStore;
   private visibilityRules: VisibilityRule[];
   private targetRules: Record<string, { delay: number; fidelity: number }>;
+  /**
+   * Map of localProposalId → { chainProposalId, txSig }.
+   * Voters skip the chain attempt when a local proposal has no entry —
+   * prevents `proposal not initialized` cascades when chain.createProposal
+   * fails but the local mirror succeeded.
+   */
+  private chainProposals: Map<number, { chainProposalId: number; proposerId: string; txSig: string }> = new Map();
 
   constructor(
     personas: AgentPersona[],
@@ -97,6 +104,60 @@ export class AgentOrchestrator {
   }
 
   /**
+   * Bulk-stake on-chain for every persona that arrived with `stakedFraction > 0`.
+   * The constructor already updates the in-memory StateManager with these
+   * pre-stakes, but the on-chain `stake_account` PDAs don't exist until we
+   * call the staking program — and `createProposal` later requires that PDA
+   * to be initialized AND have a non-zero balance.
+   *
+   * Run with bounded concurrency: each call hits initializeStakeAccount + stake
+   * (two txs). At 91 agents × 50% pre-staked × 2 txs each that's ~90 txs;
+   * concurrency 20 finishes in ~5s on localnet.
+   */
+  async init(): Promise<void> {
+    if (!this.chain || !this.chain.hasStaking()) return;
+    const toStake: { agentId: string; amount: number }[] = [];
+    for (const [id, agent] of this.agents) {
+      if (agent.holdings.staked > 0 && this.chain.hasAgent(id)) {
+        toStake.push({ agentId: id, amount: agent.holdings.staked });
+      }
+    }
+    if (toStake.length === 0) return;
+
+    console.log(`[orchestrator] pre-staking ${toStake.length} agents on-chain…`);
+    const t0 = Date.now();
+    const concurrency = Math.max(1, Math.min(toStake.length, Number(process.env.SIM_PRESTAKE_CONCURRENCY) || 20));
+    let cursor = 0;
+    let succeeded = 0;
+    let failed = 0;
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < concurrency; w++) {
+      workers.push((async () => {
+        for (;;) {
+          const i = cursor++;
+          if (i >= toStake.length) return;
+          const { agentId, amount } = toStake[i]!;
+          try {
+            await this.chain!.stake(agentId, amount);
+            succeeded++;
+          } catch (e) {
+            failed++;
+            const err = e as Error;
+            // Print first 400 chars + the first stack line so the failure mode
+            // is identifiable. "Assertion failed" alone is useless; we need the
+            // anchor error code or the program log.
+            const msg = err.message ?? String(err);
+            const stack0 = (err.stack ?? "").split("\n").find((l) => l.includes(".ts:") || l.includes(".js:")) ?? "";
+            console.warn(`  [pre-stake] ${agentId} (${amount}) failed: ${msg.slice(0, 400)}\n    at ${stack0.trim()}`);
+          }
+        }
+      })());
+    }
+    await Promise.all(workers);
+    console.log(`[orchestrator] pre-staked ${succeeded}/${toStake.length} agents in ${Date.now() - t0}ms (${failed} failed)`);
+  }
+
+  /**
    * Apply per-tick staking rewards computed by the StateManager.
    * Reward tokens accrue to each agent's staked balance.
    * Returns total rewards paid (for prompt surfacing).
@@ -122,7 +183,11 @@ export class AgentOrchestrator {
    */
   async processTickBatch(
     sim: SimulationState,
-    batchSize: number = 3
+    // 12 is a comfortable concurrency for OpenRouter — empirically a 50-agent
+    // tick now lands in ~12s instead of ~130s. If your provider rate-limits
+    // hard, drop this back to 3-5. Configurable via SIM_BATCH_SIZE env var
+    // when set; otherwise falls back to this default.
+    batchSize: number = Math.max(1, Number(process.env.SIM_BATCH_SIZE) || 12)
   ): Promise<AgentAction[]> {
     // Drain any delayed observations whose visibility tick has arrived.
     this.memory.advanceTick(sim.tick);
@@ -336,12 +401,22 @@ export class AgentOrchestrator {
       case "stake": {
         const toStake = decision.amount || 0;
         if (toStake > 0 && toStake <= agent.holdings.token) {
+          let stakeTx: string | null = null;
+          if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasStaking()) {
+            try {
+              const r = await this.chain.stake(agent.persona.id, toStake);
+              stakeTx = r.txSignature;
+            } catch (e) {
+              console.error(`  chain stake failed for ${agent.persona.id}:`, (e as Error).message.slice(0, 120));
+              success = false;
+              break;
+            }
+          }
           agent.holdings.token -= toStake;
           agent.holdings.staked += toStake;
-          // veToken protocols: apply max-lock by default. The lock map only
-          // grows: existing locks aren't shortened by additional stakes.
           this.stateManager.stake(agent.persona.id, toStake, this.defaultLockTicks());
           this.stateManager.recordTrade(agent.persona.id, "stake", toStake);
+          return this.buildAction(agent, decision, sim, true, stakeTx);
         } else {
           success = false;
         }
@@ -366,8 +441,6 @@ export class AgentOrchestrator {
       }
 
       case "propose": {
-        // Descriptions come out of the LLM's reasoning — keep the first sentence
-        // so the on-chain [u8; 64] field isn't overrun.
         const description = (decision.reasoning || "proposal").slice(0, 63);
         const proposal = this.stateManager.createProposal(agent.persona.id, description);
         if (!proposal) {
@@ -375,14 +448,26 @@ export class AgentOrchestrator {
           break;
         }
         let txSig: string | null = null;
+        let chainOk = true;
         if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasGovernance()) {
           try {
             const r = await this.chain.createProposal(agent.persona.id, proposal.id, description);
             txSig = r.txSignature;
+            this.chainProposals.set(proposal.id, {
+              chainProposalId: r.proposalId,
+              proposerId: agent.persona.id,
+              txSig: r.txSignature,
+            });
           } catch (e) {
-            console.error(`  chain propose failed for ${agent.persona.id}:`, (e as Error).message);
-            // Keep local proposal; chain side will drift — flag for next sync.
+            console.error(`  chain propose failed for ${agent.persona.id}:`, (e as Error).message.slice(0, 120));
+            // Roll back the local proposal so the next voter doesn't target a
+            // proposal that doesn't exist on-chain. Chain + local stay aligned.
+            this.stateManager.removeProposal(proposal.id);
+            chainOk = false;
           }
+        }
+        if (!chainOk) {
+          return this.buildAction(agent, decision, sim, false, null);
         }
         this.stateManager.recordTrade(agent.persona.id, "propose", proposal.id);
         return this.buildAction(agent, decision, sim, true, txSig);
@@ -404,12 +489,17 @@ export class AgentOrchestrator {
           break;
         }
         let txSig: string | null = null;
-        if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasGovernance()) {
+        // Only attempt the on-chain vote when the proposal actually exists
+        // on chain. Local-only proposals (chain.createProposal failed earlier)
+        // are still valid governance signal in the simulation but must not
+        // be sent to the program.
+        const hasChainProposal = this.chainProposals.has(proposalId);
+        if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasGovernance() && hasChainProposal) {
           try {
             const r = await this.chain.castVote(agent.persona.id, proposalId, support);
             txSig = r.txSignature;
           } catch (e) {
-            console.error(`  chain vote failed for ${agent.persona.id}:`, (e as Error).message);
+            console.error(`  chain vote failed for ${agent.persona.id}:`, (e as Error).message.slice(0, 120));
           }
         }
         this.stateManager.recordTrade(agent.persona.id, decision.action, proposalId);

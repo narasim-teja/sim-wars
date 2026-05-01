@@ -414,6 +414,24 @@ function engineRecommendations(
       rationale: `Current ${config.governance.quorumPercent}% quorum lets a small staked plurality push proposals — visible in the run via coordinated voting blocks.`,
     });
   }
+  // veToken-specific: if locks exist but inflation is high, the long lock
+  // alone won't keep defenders aligned — emission rate matters more.
+  if (config.veToken?.enabled && (config.staking.rewardEmissionRate ?? 0) > 0.0005) {
+    recs.push({
+      parameter: "staking.rewardEmissionRate",
+      suggestedValue: `${((config.staking.rewardEmissionRate ?? 0) * 0.5).toExponential(2)}`,
+      rationale: `Per-tick emission rate ${(config.staking.rewardEmissionRate ?? 0).toExponential(2)} dilutes locked holders faster than veToken voting weight can compensate. Halving the rate preserves locked-holder governance influence.`,
+    });
+  }
+  // Catch-all so the report never ships with zero recommendations when the
+  // sim was meaningfully off-baseline (sub-A grade or any failure mode).
+  if (recs.length === 0 && (meta.finalGini > 0.5 || Math.abs(meta.pricePctChange) > 20)) {
+    recs.push({
+      parameter: "amm.feeTier",
+      suggestedValue: `${Math.min(1, (config.amm.feeTier || 0.3) * 1.5).toFixed(2)}`,
+      rationale: `Price moved ${meta.pricePctChange.toFixed(1)}% over ${meta.totalTicks} ticks at fee=${config.amm.feeTier}%. A modestly higher fee dampens reflexive trading without choking liquidity.`,
+    });
+  }
   return recs;
 }
 
@@ -455,8 +473,16 @@ function inferComparison(args: {
       reasoning: "Algorithmic stablecoin with subsidized staking yield, reserve drain, and a price death spiral mirrors the LUNA pattern.",
     };
   }
-  // veToken / Curve-style heuristic — long lock + low APY + survives
-  if (config.staking.lockPeriodTicks > 100 && !deathSpiralDetected) {
+  // veToken / Curve-style heuristic. Either signal qualifies:
+  //   - explicit veToken section enabled with a non-trivial max lock (≥24mo);
+  //   - or legacy `staking.lockPeriodTicks > 100` (pre-veToken-section configs).
+  // Previous version only checked the legacy field, which silently null'd the
+  // comparison for the Curve-extracted veCRV scenario (lockPeriodTicks=0 but
+  // veToken.maxLockMonths=48).
+  const hasLongLock =
+    (config.veToken?.enabled === true && (config.veToken.maxLockMonths ?? 0) >= 24) ||
+    config.staking.lockPeriodTicks > 100;
+  if (hasLongLock && !deathSpiralDetected) {
     return {
       collapseName: "Curve veCRV (resilience reference)",
       similarityScore: 55,

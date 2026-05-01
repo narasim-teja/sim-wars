@@ -1,3 +1,4 @@
+import "./bootstrap";
 import { SimDatabase } from "./db/database";
 import { buildLLMClient } from "./llm/factory";
 import { runSimulation } from "./worker/simulation";
@@ -42,8 +43,7 @@ async function main() {
   const healthy = await llm.healthCheck();
   if (!healthy) {
     console.error(`ERROR: LLM provider (${llm.name}) health check failed.`);
-    console.error("  For ollama: make sure 'ollama serve' is running and the model is pulled.");
-    console.error("  For openrouter: check OPENROUTER_API_KEY.");
+    console.error("  Check OPENROUTER_API_KEY in .env (root or sim-engine/).");
     process.exit(1);
   }
   const models = llm.listModels ? await llm.listModels() : [];

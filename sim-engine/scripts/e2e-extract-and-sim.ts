@@ -23,6 +23,8 @@ interface Args {
   agentCount: number;
   rosterPreset: "luna" | "crv" | "balanced";
   onChain: boolean;
+  ticks: number;
+  pollTimeoutMs: number;
   frontendBase: string;
   simBase: string;
   outDir: string;
@@ -33,6 +35,8 @@ function parseArgs(argv: string[]): Args {
   let agentCount = 50;
   let rosterPreset: Args["rosterPreset"] = "balanced";
   let onChain = false;
+  let ticks = 30;
+  let pollTimeoutMs = 30 * 60 * 1000; // 30 min default; on-chain runs are slow
   let frontendBase = process.env.FRONTEND_BASE ?? "http://localhost:3000";
   let simBase = process.env.SIM_BASE ?? "http://localhost:8787";
   let outDir = "./.local/e2e";
@@ -43,15 +47,17 @@ function parseArgs(argv: string[]): Args {
     if (a === "--agents" && argv[i + 1]) { agentCount = Number(argv[++i]); continue; }
     if (a === "--preset" && argv[i + 1]) { rosterPreset = argv[++i] as Args["rosterPreset"]; continue; }
     if (a === "--on-chain") { onChain = true; continue; }
+    if (a === "--ticks" && argv[i + 1]) { ticks = Number(argv[++i]); continue; }
+    if (a === "--poll-timeout-ms" && argv[i + 1]) { pollTimeoutMs = Number(argv[++i]); continue; }
     if (a === "--frontend" && argv[i + 1]) { frontendBase = argv[++i]!; continue; }
     if (a === "--sim" && argv[i + 1]) { simBase = argv[++i]!; continue; }
     if (a === "--out" && argv[i + 1]) { outDir = argv[++i]!; continue; }
   }
   if (!pdfPath) {
-    console.error("usage: bun run scripts/e2e-extract-and-sim.ts --pdf <path> [--agents N] [--preset luna|crv|balanced] [--on-chain]");
+    console.error("usage: bun run scripts/e2e-extract-and-sim.ts --pdf <path> [--agents N] [--preset luna|crv|balanced] [--on-chain] [--ticks N] [--poll-timeout-ms N]");
     process.exit(2);
   }
-  return { pdfPath: resolve(pdfPath), agentCount, rosterPreset, onChain, frontendBase, simBase, outDir };
+  return { pdfPath: resolve(pdfPath), agentCount, rosterPreset, onChain, ticks, pollTimeoutMs, frontendBase, simBase, outDir };
 }
 
 async function extract(args: Args): Promise<unknown> {
@@ -71,7 +77,7 @@ async function createSim(args: Args, config: unknown): Promise<CreateSimResponse
     config,
     agentCount: args.agentCount,
     rosterPreset: args.rosterPreset,
-    tickConfig: { intervalMs: 0, maxTicks: 30 },
+    tickConfig: { intervalMs: 0, maxTicks: args.ticks },
     onChain: args.onChain,
   };
   const res = await fetch(`${args.simBase}/api/sim`, {
@@ -83,7 +89,7 @@ async function createSim(args: Args, config: unknown): Promise<CreateSimResponse
   return res.json() as Promise<CreateSimResponse>;
 }
 
-async function pollUntilDone(args: Args, simId: string, timeoutMs = 10 * 60 * 1000): Promise<string> {
+async function pollUntilDone(args: Args, simId: string, timeoutMs = args.pollTimeoutMs): Promise<string> {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     const res = await fetch(`${args.simBase}/api/sim/${simId}`);

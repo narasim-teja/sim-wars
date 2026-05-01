@@ -5,13 +5,17 @@
 
 /**
  * Hard ceiling on agents per simulation. Above this the API rejects with 400.
- * Set conservatively because:
- *   - on-chain runs need 1 keypair per agent + 5 SOL airdrop per keypair on
- *     devnet, which gets rate-limited fast;
- *   - LLM cost scales linearly (agentCount × ticks × tokens/call).
- * Bump if you have a private RPC + budget for it.
+ * Bumped to 5000 for OASIS-scale stress tests: at this size the bottleneck
+ * is LLM cost ($) and on-chain RPC throughput, not engine memory. The
+ * roster expander, orchestrator, and DB are all O(N) so 5k is fine; just
+ * be aware that:
+ *   - on-chain runs at >1k agents need a paid RPC (Helius) — public devnet
+ *     will rate-limit deploy at ~50 concurrent ATA-creates;
+ *   - LLM cost scales linearly (agentCount × ticks × tokens/call). At
+ *     5k agents × 30 ticks × ~$0.0002/call ≈ $30/run on the cheap preset.
+ * Override at runtime via SIM_MAX_AGENTS env var (intended for CI).
  */
-export const MAX_AGENTS = 100;
+export const MAX_AGENTS = Number(process.env.SIM_MAX_AGENTS) || 5000;
 
 /**
  * Default agent count when a request omits both `agents[]` and `agentCount`.

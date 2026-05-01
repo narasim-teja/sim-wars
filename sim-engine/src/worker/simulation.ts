@@ -59,6 +59,10 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   }
 
   const orchestrator = new AgentOrchestrator(agents, llm, stateManager, db, simId, chainExecutor);
+  // Bulk pre-stake on-chain for personas with stakedFraction > 0 so their
+  // stake_account PDAs exist before any agent issues a `propose` action.
+  // No-op when chain or staking program isn't deployed.
+  await orchestrator.init();
 
   let lunaController: LunaScenarioController | null = null;
   if (config.stablecoin?.enabled) {
@@ -73,6 +77,9 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   let deathSpiralDetected = false;
   let deathSpiralAtTick: number | null = null;
   let lastCompletedTick = 0;
+  // Track whether per-tick fund_reward_vault hit its first failure so we
+  // log it once instead of every tick after the deployer ATA empties.
+  let emissionsBroken = false;
   const initialPrice = config.amm.initialPrice;
   const recentActions: AgentAction[] = [];
   const COORDINATION_WINDOW = 5;
@@ -96,7 +103,10 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
 
     // Reward-vault inflation: emit fresh tokens per tick into the reward vault
     // so long-running sims don't dry up the once-seeded reward pool.
-    // Amount = total_staked × rewardEmissionRate (bounded by deployer's bag).
+    // Amount = total_staked × rewardEmissionRate.
+    // The deploy script mints an inflation budget into the deployer ATA so
+    // these calls have source funds; if the budget runs out we suppress
+    // further warnings (one-shot signal is enough) and let the sim continue.
     if (chainExecutor && chainExecutor.hasStaking()) {
       const dep = chainExecutor.getDeployment();
       const rate = dep.staking?.rewardEmissionRate ?? 0;
@@ -107,10 +117,11 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
           try {
             await chainExecutor.fundRewardVault(emit);
           } catch (e) {
-            const msg = (e as Error).message;
-            // Deployer ran out of LUNA → emissions stop. Don't crash the sim;
-            // the post-mortem will show resilience tanking from yield drying up.
-            console.warn(`  [emissions] tick=${tickNum} fund_reward_vault failed: ${msg.slice(0, 80)}`);
+            if (!emissionsBroken) {
+              const msg = (e as Error).message;
+              console.warn(`  [emissions] tick=${tickNum} fund_reward_vault failed (suppressing further): ${msg.slice(0, 250)}`);
+              emissionsBroken = true;
+            }
           }
         }
       }

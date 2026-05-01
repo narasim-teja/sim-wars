@@ -1,3 +1,4 @@
+import "../bootstrap";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, open, appendFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn, type Subprocess } from "bun";
@@ -7,6 +8,7 @@ import type { SimulationConfig, AgentPersona, TickConfig } from "../types";
 import type { StatusSnapshot } from "../ipc/event-writer";
 import { buildLLMClient } from "../llm/factory";
 import { draftScenario } from "../scenarios/generator";
+import { normalizeConfig } from "../scenarios/normalize";
 import { perRunDeploymentPath } from "../chain/sdk";
 import { expandRoster, type RosterPreset } from "../agents/roster";
 import { MAX_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
@@ -63,6 +65,18 @@ async function handleCreate(req: Request): Promise<Response> {
     return json({ error: "config and tickConfig are required" }, { status: 400 });
   }
 
+  // Coalesce sparse extraction output (`amm: {}` etc.) to a fully-populated
+  // config before we hand it to the worker or the deploy script. Without
+  // this, downstream code reads `undefined` for fields the schema is
+  // supposed to default — was the bug behind resilience reading 51 instead
+  // of 91 last run.
+  let normalizedConfig: SimulationConfig;
+  try {
+    normalizedConfig = normalizeConfig(body.config);
+  } catch (e) {
+    return json({ error: `config normalization failed: ${(e as Error).message}` }, { status: 400 });
+  }
+
   const simId = crypto.randomUUID();
 
   // Roster: explicit `agents` wins; otherwise expand from agentCount + preset.
@@ -94,10 +108,11 @@ async function handleCreate(req: Request): Promise<Response> {
     }
   }
 
-  // Persist the resolved roster, not the request body, so worker + deploy
-  // script see the exact same agents the API committed to.
+  // Persist the resolved roster + normalized config, not the request body, so
+  // worker + deploy script see the exact same shape the API committed to.
   const persistedBody: CreateSimBody = {
     ...body,
+    config: normalizedConfig,
     agents: resolvedAgents,
   };
 
@@ -164,12 +179,13 @@ async function runDeployThenWorker(simId: string, body: CreateSimBody): Promise<
   const paths = pathsFor(simId);
   appendEvent(paths.eventsFile, { kind: "chain:deploy:start", ts: Date.now(), simId, step: "starting" });
 
-  // Decide which optional programs to deploy based on the config shape.
-  // Staking is always useful when on-chain is requested. Governance only when
-  // the config actually defines a meaningful proposal/quorum threshold.
+  // Decide which optional programs to deploy based on the (already-normalized)
+  // config shape. Staking is always useful when on-chain is requested.
+  // Governance is opt-in: enabled when both thresholds are non-zero.
   const withStaking = true;
-  const withGovernance = body.config.governance.proposalThresholdPercent > 0
-    && body.config.governance.quorumPercent > 0;
+  const govThreshold = body.config.governance?.proposalThresholdPercent ?? 0;
+  const govQuorum = body.config.governance?.quorumPercent ?? 0;
+  const withGovernance = govThreshold > 0 && govQuorum > 0;
 
   const deployArgs = [
     "run", DEPLOY_SCRIPT,

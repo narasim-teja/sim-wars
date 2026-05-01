@@ -1,3 +1,4 @@
+import "../bootstrap";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { SimDatabase } from "../db/database";
 import { buildLLMClient, buildReportLLMClient } from "../llm/factory";

@@ -83,16 +83,37 @@ export class ChainExecutor {
     return this.provider;
   }
 
-  /** Convert a UI-amount float into atomic u64 (BN). */
+  /**
+   * Convert a UI-amount float into atomic u64 (BN). Goes through a
+   * fixed-point string to avoid Number-precision loss on large values:
+   * with decimals=9, any amount > ~9 LUNA × 10^6 (i.e. > 9M tokens) overflows
+   * Number.MAX_SAFE_INTEGER under the naive `amount * 10**decimals` form,
+   * causing BN.js to throw "Assertion failed" (its internal numeric-range
+   * check). Uses the same toFixed→string→BN pattern as deploy-from-config.ts.
+   */
   private toAtoms(amount: number): BN {
-    const scale = 10 ** this.decimals;
-    return new BN(Math.floor(amount * scale));
+    if (!isFinite(amount)) throw new Error(`toAtoms: non-finite input ${amount}`);
+    if (amount === 0) return new BN(0);
+    const negative = amount < 0;
+    const fixed = Math.abs(amount).toFixed(this.decimals);
+    const [whole, frac = ""] = fixed.split(".");
+    const fracPadded = (frac + "0".repeat(this.decimals)).slice(0, this.decimals);
+    const digits = (whole + fracPadded).replace(/^0+/, "") || "0";
+    return new BN(negative ? "-" + digits : digits);
   }
 
+  /**
+   * Reverse of toAtoms — uses BigInt division to keep precision for very
+   * large vault balances. Returns a Number for downstream UI use; if the
+   * bigint exceeds Number.MAX_SAFE_INTEGER the caller is responsible for
+   * understanding precision loss is then expected.
+   */
   private fromAtoms(atoms: bigint | BN): number {
-    const scale = 10 ** this.decimals;
-    const v = typeof atoms === "bigint" ? Number(atoms) : atoms.toNumber();
-    return v / scale;
+    const big = typeof atoms === "bigint" ? atoms : BigInt(atoms.toString());
+    const scale = 10n ** BigInt(this.decimals);
+    const whole = big / scale;
+    const remainder = big % scale;
+    return Number(whole) + Number(remainder) / Number(scale);
   }
 
   /** Read pool reserves and derive current price (UST per LUNA). */
@@ -546,6 +567,14 @@ export class ChainExecutor {
     const gov = this.requireGovernance();
     const wallet = this.agentWallets.get(agentId);
     if (!wallet) throw new Error(`no on-chain wallet for agent ${agentId}`);
+
+    // Defensive: ensure the proposer's stake_account PDA exists. The
+    // governance program's createProposal account-loader requires the
+    // account to be initialized; agents that proposed without ever staking
+    // would fail with `AccountNotInitialized`. This is a safety net — the
+    // canonical path is to stake first, but if the orchestrator ever lets
+    // a propose-only agent through, this avoids a confusing chain error.
+    await this.ensureStakeAccount(agentId);
 
     const pool = new PublicKey(st.pool);
     const governance = new PublicKey(gov.governance);
