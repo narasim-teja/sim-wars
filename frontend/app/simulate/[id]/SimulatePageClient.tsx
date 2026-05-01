@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { FileText, Loader2 } from "lucide-react";
 import { TopNav, type ViewMode } from "@/components/TopNav";
 import { useSimulation } from "@/hooks/useSimulation";
 import { computeThreat } from "@/lib/threat";
@@ -36,7 +38,7 @@ export function SimulatePageClient({ simId }: { simId: string }) {
       <TopNav view={view} onViewChange={setView} step={3} status={sim.status} back="/" />
 
       {/* Sub-bar: sim id + connection + metrics + controls */}
-      <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 bg-white px-6 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 bg-white px-6 py-2">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
           <span>sim</span>
           <span className="text-zinc-900">{simId.slice(0, 12)}</span>
@@ -57,8 +59,38 @@ export function SimulatePageClient({ simId }: { simId: string }) {
         <div className="min-w-0 flex-1">
           <MetricsBar state={sim.current} tick={sim.tick} />
         </div>
+        {sim.reportReady && (
+          <Link
+            href={`/report/${simId}`}
+            className="flex h-8 items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-3 font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-800 hover:border-emerald-400 hover:bg-emerald-100"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            View report{sim.reportGrade ? ` · ${sim.reportGrade}` : ""}
+          </Link>
+        )}
         <SimControls simId={simId} status={sim.status as never} />
       </div>
+
+      {(sim.chainDeploying || sim.chainDeployStatus) && (
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-3 border-b px-6 py-2 font-mono text-[11px]",
+            sim.chainDeploying
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
+          )}
+        >
+          {sim.chainDeploying ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span className="block h-2 w-2 rounded-full bg-emerald-600" />
+          )}
+          <span className="uppercase tracking-[0.2em]">
+            {sim.chainDeploying ? "on-chain deploy" : "chain"}
+          </span>
+          <span className="truncate">{sim.chainDeployStatus}</span>
+        </div>
+      )}
 
       {/* Main */}
       <div className="grid min-h-0 flex-1 overflow-hidden" style={{

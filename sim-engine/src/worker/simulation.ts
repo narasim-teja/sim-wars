@@ -33,6 +33,8 @@ export interface RunSimulationOptions {
 export interface RunSimulationResult {
   totalTicks: number;
   deathSpiralDetected: boolean;
+  /** Tick at which the death spiral was detected, or null if it never tripped. */
+  deathSpiralAtTick: number | null;
   finalPrice: number;
   initialPrice: number;
 }
@@ -69,6 +71,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   });
 
   let deathSpiralDetected = false;
+  let deathSpiralAtTick: number | null = null;
   let lastCompletedTick = 0;
   const initialPrice = config.amm.initialPrice;
   const recentActions: AgentAction[] = [];
@@ -134,6 +137,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     const currentPrice = stateManager.getPrice();
     if (currentPrice < initialPrice * 0.01 && !deathSpiralDetected) {
       deathSpiralDetected = true;
+      deathSpiralAtTick = tickNum;
       db.updateSimStatus(simId, "death_spiral");
       opts.onDeathSpiral?.(tickNum);
     }
@@ -173,6 +177,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   const summary: RunSimulationResult = {
     totalTicks: results.length,
     deathSpiralDetected,
+    deathSpiralAtTick,
     finalPrice,
     initialPrice,
   };

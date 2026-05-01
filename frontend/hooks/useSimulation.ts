@@ -46,6 +46,13 @@ export interface SimUiState {
   deathSpiralAt: number | null;
   startedAt: number | null;
   endedAt: number | null;
+  /** True once the worker has emitted report:ready (or status snapshot showed hasReport). */
+  reportReady: boolean;
+  reportScore: number | null;
+  reportGrade: string | null;
+  /** Set true when a chain:deploy:start arrives, reset when chain:deploy:complete fires. */
+  chainDeploying: boolean;
+  chainDeployStatus: string | null;
 }
 
 const SERIES_CAP = 200;
@@ -70,6 +77,11 @@ function initialState(): SimUiState {
     deathSpiralAt: null,
     startedAt: null,
     endedAt: null,
+    reportReady: false,
+    reportScore: null,
+    reportGrade: null,
+    chainDeploying: false,
+    chainDeployStatus: null,
   };
 }
 
@@ -215,6 +227,58 @@ function reducer(state: SimUiState, action: Action): SimUiState {
 
     case "agent:action":
       return state; // tick:complete carries actions; per-action events would be redundant
+
+    case "report:start":
+      return {
+        ...state,
+        logs: pushLog(state.logs, "system", "report generation started"),
+      };
+
+    case "report:ready":
+      return {
+        ...state,
+        reportReady: true,
+        reportScore: ev.resilienceScore,
+        reportGrade: ev.resilienceGrade,
+        logs: pushLog(state.logs, "system", `report ready · resilience ${ev.resilienceScore}/100 (grade ${ev.resilienceGrade})`),
+      };
+
+    case "report:error":
+      return {
+        ...state,
+        logs: pushLog(state.logs, "error", `report generation failed: ${ev.message}`),
+      };
+
+    case "chain:deploy:start":
+      return {
+        ...state,
+        chainDeploying: true,
+        chainDeployStatus: ev.step,
+        logs: pushLog(state.logs, "system", `on-chain deploy started: ${ev.step}`),
+      };
+
+    case "chain:deploy:progress":
+      return {
+        ...state,
+        chainDeployStatus: ev.message,
+        logs: pushLog(state.logs, "info", `[${ev.step}] ${ev.message}`),
+      };
+
+    case "chain:deploy:complete":
+      return {
+        ...state,
+        chainDeploying: false,
+        chainDeployStatus: `deployed: ${ev.programs.join(", ")}`,
+        logs: pushLog(state.logs, "system", `on-chain deploy complete · ${ev.programs.join(", ")}`),
+      };
+
+    case "chain:deploy:error":
+      return {
+        ...state,
+        chainDeploying: false,
+        chainDeployStatus: `error: ${ev.message}`,
+        logs: pushLog(state.logs, "error", `on-chain deploy failed: ${ev.message}`),
+      };
 
     default:
       return state;

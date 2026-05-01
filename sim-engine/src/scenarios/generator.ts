@@ -60,23 +60,8 @@ export async function draftScenario(
   };
 }
 
-/**
- * Some LLM adapters (our Ollama/OpenRouter providers) always coerce output
- * through the agent-action parser. That loses structure we need here. We
- * sidestep by detecting the `generateRaw` hook some adapters provide and
- * otherwise relying on the reasoning field to carry the JSON.
- */
 async function callRaw(llm: LLMClient, prompt: string): Promise<string> {
-  const client = llm as LLMClient & { generateRaw?: (p: string) => Promise<string> };
-  if (typeof client.generateRaw === "function") {
-    return client.generateRaw(prompt);
-  }
-  // Fall back: ask the LLM as if this were an agent decision. Providers that
-  // shove the full completion into `reasoning` will preserve enough for us
-  // to parse. The MockProvider returns its scripted/decide payload as-is —
-  // tests can stuff a JSON string into `reasoning`.
-  const resp = await llm.generate(prompt);
-  return resp.reasoning ?? "";
+  return llm.generateRaw(prompt, { maxTokens: 2048 });
 }
 
 function extractJson(raw: string): unknown {

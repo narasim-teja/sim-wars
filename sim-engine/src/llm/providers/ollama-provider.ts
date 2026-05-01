@@ -19,6 +19,11 @@ export class OllamaProvider implements LLMClient {
   }
 
   async generate(prompt: string, opts: LLMGenerateOptions = {}): Promise<LLMResponse> {
+    const raw = await this.generateRaw(prompt, opts);
+    return parseLLMResponse(raw);
+  }
+
+  async generateRaw(prompt: string, opts: LLMGenerateOptions = {}): Promise<string> {
     const res = await fetch(`${this.baseUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -40,7 +45,7 @@ export class OllamaProvider implements LLMClient {
       throw new Error(`ollama ${res.status}: ${text}`);
     }
     const data = (await res.json()) as { response: string };
-    return parseLLMResponse(data.response);
+    return data.response ?? "";
   }
 
   async generateBatch(items: LLMBatchItem[]): Promise<Map<string, LLMResponse>> {

@@ -13,6 +13,12 @@ export interface MockProviderOptions {
   fallback?: LLMResponse;
   /** Artificial latency per call (ms). Default 0. */
   latencyMs?: number;
+  /**
+   * Returns the raw text for a `generateRaw()` call. If omitted, the mock
+   * returns a JSON-encoded {@link LLMResponse} so callers parsing as JSON
+   * still get something valid.
+   */
+  rawDecide?: (prompt: string) => string;
 }
 
 /**
@@ -25,6 +31,7 @@ export class MockProvider implements LLMClient {
   private decide?: MockDecider;
   private fallback: LLMResponse;
   private latencyMs: number;
+  private rawDecide?: (prompt: string) => string;
 
   public calls: { agentId: string; prompt: string }[] = [];
 
@@ -33,6 +40,7 @@ export class MockProvider implements LLMClient {
     this.decide = opts.decide;
     this.fallback = opts.fallback ?? DEFAULT_HOLD;
     this.latencyMs = opts.latencyMs ?? 0;
+    this.rawDecide = opts.rawDecide;
   }
 
   async generate(prompt: string, _opts?: LLMGenerateOptions): Promise<LLMResponse> {
@@ -40,6 +48,14 @@ export class MockProvider implements LLMClient {
     this.calls.push({ agentId: "__raw__", prompt });
     if (this.decide) return this.decide({ agentId: "__raw__", prompt });
     return { ...this.fallback };
+  }
+
+  async generateRaw(prompt: string, _opts?: LLMGenerateOptions): Promise<string> {
+    if (this.latencyMs > 0) await Bun.sleep(this.latencyMs);
+    this.calls.push({ agentId: "__raw__", prompt });
+    if (this.rawDecide) return this.rawDecide(prompt);
+    if (this.decide) return JSON.stringify(this.decide({ agentId: "__raw__", prompt }));
+    return JSON.stringify(this.fallback);
   }
 
   async generateBatch(items: LLMBatchItem[]): Promise<Map<string, LLMResponse>> {

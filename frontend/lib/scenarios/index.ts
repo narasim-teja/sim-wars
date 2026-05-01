@@ -1,5 +1,6 @@
 import luna8 from "./luna-8.json";
 import luna20 from "./luna-20.json";
+import crv from "./crv-curve.json";
 
 export interface ScenarioPayload {
   config: unknown;
@@ -8,11 +9,13 @@ export interface ScenarioPayload {
 }
 
 export interface ScenarioPreset {
-  id: "luna-8" | "luna-20";
+  id: "luna-8" | "luna-20" | "crv";
   label: string;
   description: string;
   payload: ScenarioPayload;
   defaultMaxTicks: number;
+  /** Cosmetic flag the UI uses to badge backtests as "validated" vs experimental. */
+  validated?: boolean;
 }
 
 export const SCENARIO_PRESETS: ScenarioPreset[] = [
@@ -22,6 +25,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
     description: "Full Phase-2 roster reproducing the May 2022 death spiral. Whales, governance attackers, sybil swarm, MEV bot, insiders, panic seller — the works.",
     payload: luna20 as ScenarioPayload,
     defaultMaxTicks: 50,
+    validated: true,
   },
   {
     id: "luna-8",
@@ -29,6 +33,15 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
     description: "Slimmed roster — 2 whales, 2 farmers, 1 degen, 1 governance attacker, 2 long-term holders. Faster iteration, same dynamics.",
     payload: luna8 as ScenarioPayload,
     defaultMaxTicks: 30,
+    validated: true,
+  },
+  {
+    id: "crv",
+    label: "Curve veCRV · resilience backtest",
+    description: "veToken model with 4-year locks, sustainable APY, defender-friendly governance. Demonstrates why long lock-ups break the death-spiral loop.",
+    payload: crv as ScenarioPayload,
+    defaultMaxTicks: 30,
+    validated: true,
   },
 ];
 

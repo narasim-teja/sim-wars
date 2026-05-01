@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, open } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, open, appendFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { spawn, type Subprocess } from "bun";
 import { pathsFor, RUNS_DIR } from "../ipc/paths";
 import { writeCommand } from "../ipc/command-reader";
@@ -7,10 +7,12 @@ import type { SimulationConfig, AgentPersona, TickConfig } from "../types";
 import type { StatusSnapshot } from "../ipc/event-writer";
 import { buildLLMClient } from "../llm/factory";
 import { draftScenario } from "../scenarios/generator";
+import { perRunDeploymentPath } from "../chain/sdk";
 
 interface SpawnedRun {
   simId: string;
-  process: Subprocess;
+  /** Worker subprocess. Null while the on-chain deploy step is still running. */
+  process: Subprocess | null;
   startedAt: number;
   // Byte offset for incremental NDJSON tailing
   eventsOffset: number;
@@ -21,6 +23,7 @@ const wsClients = new Map<string, Set<{ send: (data: string) => void }>>(); // s
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WORKER_SCRIPT = resolve(import.meta.dir, "../worker/main.ts");
+const DEPLOY_SCRIPT = resolve(import.meta.dir, "../../scripts/deploy-from-config.ts");
 
 function json(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -60,16 +63,136 @@ async function handleCreate(req: Request): Promise<Response> {
   // Touch events file so tailers can open it immediately
   writeFileSync(paths.eventsFile, "");
 
+  // Track the run before any async deploy so WS clients connecting in the
+  // gap between deploy + worker spawn can subscribe and tail events.
+  runs.set(simId, { simId, process: null, startedAt: Date.now(), eventsOffset: 0 });
+
+  if (body.onChain) {
+    // Fire-and-forget the deploy → worker chain. The HTTP response returns
+    // immediately so the frontend can subscribe to /ws/sim/:id and watch
+    // the chain:deploy:* events stream in.
+    runDeployThenWorker(simId, body).catch((err) => {
+      appendEvent(paths.eventsFile, {
+        kind: "chain:deploy:error",
+        ts: Date.now(),
+        simId,
+        message: (err as Error).message,
+      });
+      writeFileSync(
+        paths.statusFile,
+        JSON.stringify({ simId, status: "failed", tick: 0, updatedAt: Date.now() }),
+      );
+    });
+  } else {
+    spawnWorker(simId);
+  }
+
+  return json({ simId, status: "starting" }, { status: 201, headers: corsHeaders() });
+}
+
+function appendEvent(eventsFile: string, event: object): void {
+  appendFileSync(eventsFile, JSON.stringify(event) + "\n");
+}
+
+function spawnWorker(simId: string, extraEnv: Record<string, string> = {}): void {
   const proc = spawn({
     cmd: ["bun", "run", WORKER_SCRIPT, "--sim-id", simId],
     stdout: "inherit",
     stderr: "inherit",
-    env: { ...process.env, SIM_ID: simId },
+    env: { ...process.env, SIM_ID: simId, ...extraEnv },
+  });
+  const existing = runs.get(simId);
+  runs.set(simId, {
+    simId,
+    process: proc,
+    startedAt: existing?.startedAt ?? Date.now(),
+    eventsOffset: existing?.eventsOffset ?? 0,
+  });
+}
+
+async function runDeployThenWorker(simId: string, body: CreateSimBody): Promise<void> {
+  const paths = pathsFor(simId);
+  appendEvent(paths.eventsFile, { kind: "chain:deploy:start", ts: Date.now(), simId, step: "starting" });
+
+  // Decide which optional programs to deploy based on the config shape.
+  // Staking is always useful when on-chain is requested. Governance only when
+  // the config actually defines a meaningful proposal/quorum threshold.
+  const withStaking = true;
+  const withGovernance = body.config.governance.proposalThresholdPercent > 0
+    && body.config.governance.quorumPercent > 0;
+
+  const deployArgs = [
+    "run", DEPLOY_SCRIPT,
+    "--scenario", paths.scenarioFile,
+    "--sim-id", simId,
+    "--out", perRunDeploymentPath(simId),
+  ];
+  if (withStaking) deployArgs.push("--with-staking");
+  if (withGovernance) deployArgs.push("--with-governance");
+
+  appendEvent(paths.eventsFile, {
+    kind: "chain:deploy:progress", ts: Date.now(), simId, step: "running",
+    message: `bun ${deployArgs.join(" ")}`,
   });
 
-  runs.set(simId, { simId, process: proc, startedAt: Date.now(), eventsOffset: 0 });
+  const proc = spawn({
+    cmd: ["bun", ...deployArgs],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: process.env,
+  });
 
-  return json({ simId, status: "starting" }, { status: 201, headers: corsHeaders() });
+  // Tee stdout/stderr into the events stream as progress lines so the UI can
+  // show what's happening without blocking the HTTP response.
+  void streamToEvents(proc.stdout, paths.eventsFile, simId, "deploy.stdout");
+  void streamToEvents(proc.stderr, paths.eventsFile, simId, "deploy.stderr");
+
+  const exit = await proc.exited;
+  if (exit !== 0) {
+    appendEvent(paths.eventsFile, {
+      kind: "chain:deploy:error", ts: Date.now(), simId,
+      message: `deploy script exited with ${exit}`,
+    });
+    writeFileSync(
+      paths.statusFile,
+      JSON.stringify({ simId, status: "failed", tick: 0, updatedAt: Date.now() }),
+    );
+    return;
+  }
+
+  const programs = ["tokenMint", "ammDex", ...(withStaking ? ["staking"] : []), ...(withGovernance ? ["governance"] : [])];
+  appendEvent(paths.eventsFile, {
+    kind: "chain:deploy:complete", ts: Date.now(), simId, programs,
+  });
+
+  spawnWorker(simId, { CHAIN_DEPLOYMENT: perRunDeploymentPath(simId) });
+}
+
+async function streamToEvents(
+  stream: ReadableStream<Uint8Array> | undefined,
+  eventsFile: string,
+  simId: string,
+  step: string,
+): Promise<void> {
+  if (!stream) return;
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (line) {
+        appendEvent(eventsFile, {
+          kind: "chain:deploy:progress", ts: Date.now(), simId, step, message: line,
+        });
+      }
+    }
+  }
 }
 
 function handleCommand(simId: string, type: "pause" | "resume" | "abort"): Response {
@@ -84,7 +207,19 @@ function handleStatus(simId: string): Response {
   const paths = pathsFor(simId);
   if (!existsSync(paths.statusFile)) return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
   const snap = JSON.parse(readFileSync(paths.statusFile, "utf-8")) as StatusSnapshot;
-  return json(snap, { headers: corsHeaders() });
+  return json({ ...snap, hasReport: existsSync(paths.reportFile) }, { headers: corsHeaders() });
+}
+
+function handleReport(simId: string): Response {
+  const paths = pathsFor(simId);
+  if (!existsSync(paths.statusFile)) {
+    return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
+  }
+  if (!existsSync(paths.reportFile)) {
+    return json({ error: "report not ready" }, { status: 404, headers: corsHeaders() });
+  }
+  const report = JSON.parse(readFileSync(paths.reportFile, "utf-8"));
+  return json(report, { headers: corsHeaders() });
 }
 
 async function handleDraftScenario(req: Request): Promise<Response> {
@@ -213,6 +348,11 @@ const server = Bun.serve<WsData, never>({
       return handleDraftScenario(req);
     }
 
+    const reportMatch = url.pathname.match(/^\/api\/sim\/([^/]+)\/report$/);
+    if (reportMatch && req.method === "GET") {
+      return handleReport(reportMatch[1]!);
+    }
+
     const simMatch = url.pathname.match(/^\/api\/sim\/([^/]+)(?:\/(pause|resume|abort))?$/);
     if (simMatch) {
       const simId = simMatch[1]!;
@@ -244,4 +384,5 @@ console.log(`  POST /api/sim/:id/pause        — pause`);
 console.log(`  POST /api/sim/:id/resume       — resume`);
 console.log(`  POST /api/sim/:id/abort        — abort`);
 console.log(`  POST /api/scenarios/draft      — LLM-drafted SimulationConfig`);
+console.log(`  GET  /api/sim/:id/report       — post-sim report (JSON)`);
 console.log(`  WS   /ws/sim/:id               — event stream (NDJSON)`);

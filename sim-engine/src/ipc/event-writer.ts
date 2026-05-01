@@ -13,6 +13,13 @@ export type WorkerEvent =
   | { kind: "agent:action"; ts: number; tick: number; action: AgentAction }
   | { kind: "sim:complete"; ts: number; simId: string; status: SimStatus; totalTicks: number }
   | { kind: "sim:death_spiral"; ts: number; simId: string; tick: number }
+  | { kind: "report:start"; ts: number; simId: string }
+  | { kind: "report:ready"; ts: number; simId: string; resilienceScore: number; resilienceGrade: string }
+  | { kind: "report:error"; ts: number; simId: string; message: string }
+  | { kind: "chain:deploy:start"; ts: number; simId: string; step: string }
+  | { kind: "chain:deploy:progress"; ts: number; simId: string; step: string; message: string }
+  | { kind: "chain:deploy:complete"; ts: number; simId: string; programs: string[] }
+  | { kind: "chain:deploy:error"; ts: number; simId: string; message: string }
   | { kind: "error"; ts: number; tick: number | null; message: string }
   | { kind: "log"; ts: number; level: "info" | "warn" | "error"; message: string };
 

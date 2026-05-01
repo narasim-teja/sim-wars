@@ -39,6 +39,11 @@ export class OpenRouterProvider implements LLMClient {
   }
 
   async generate(prompt: string, opts: LLMGenerateOptions = {}): Promise<LLMResponse> {
+    const content = await this.generateRaw(prompt, opts);
+    return parseLLMResponse(content);
+  }
+
+  async generateRaw(prompt: string, opts: LLMGenerateOptions = {}): Promise<string> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${this.apiKey}`,
@@ -70,8 +75,7 @@ export class OpenRouterProvider implements LLMClient {
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const content = data.choices?.[0]?.message?.content ?? "";
-    return parseLLMResponse(content);
+    return data.choices?.[0]?.message?.content ?? "";
   }
 
   async generateBatch(items: LLMBatchItem[]): Promise<Map<string, LLMResponse>> {

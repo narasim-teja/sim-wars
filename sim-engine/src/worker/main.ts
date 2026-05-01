@@ -1,10 +1,11 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { SimDatabase } from "../db/database";
 import { buildLLMClient } from "../llm/factory";
 import { pathsFor } from "../ipc/paths";
 import { EventWriter, type SimStatus } from "../ipc/event-writer";
 import { CommandReader, type WorkerCommand } from "../ipc/command-reader";
 import { runSimulation } from "./simulation";
+import { generateReport } from "../report/generator";
 import type { SimulationConfig, AgentPersona, TickConfig } from "../types";
 
 interface ScenarioPayload {
@@ -76,7 +77,7 @@ async function main() {
   let lastTick = 0;
 
   try {
-    await runSimulation({
+    const summary = await runSimulation({
       simId,
       config: scenario.config,
       agents: scenario.agents,
@@ -106,9 +107,44 @@ async function main() {
       },
     });
 
-    const status: SimStatus = aborted ? "interrupted" : "completed";
+    const status: SimStatus = aborted ? "interrupted" : (summary.deathSpiralDetected ? "death_spiral" : "completed");
     setStatus(status, lastTick);
     events.emit({ kind: "sim:complete", ts: Date.now(), simId, status, totalTicks: lastTick });
+
+    // ── Post-sim report ────────────────────────────────────────────────────
+    // Skip if the run was aborted very early (no state to report on) or if
+    // the user explicitly opted out via SIM_SKIP_REPORT.
+    const skipReport = process.env.SIM_SKIP_REPORT === "1" || (aborted && lastTick < 2);
+    if (!skipReport) {
+      events.emit({ kind: "report:start", ts: Date.now(), simId });
+      try {
+        const report = await generateReport({
+          simId,
+          config: scenario.config,
+          agents: scenario.agents,
+          db,
+          llm,
+          deathSpiralDetected: summary.deathSpiralDetected,
+          deathSpiralAtTick: summary.deathSpiralAtTick,
+          finalStatus: status,
+        });
+        writeFileSync(paths.reportFile, JSON.stringify(report, null, 2));
+        events.emit({
+          kind: "report:ready",
+          ts: Date.now(),
+          simId,
+          resilienceScore: report.resilienceScore,
+          resilienceGrade: report.resilienceGrade,
+        });
+      } catch (err) {
+        events.emit({
+          kind: "report:error",
+          ts: Date.now(),
+          simId,
+          message: (err as Error).message,
+        });
+      }
+    }
   } catch (err) {
     events.emit({ kind: "error", ts: Date.now(), tick: lastTick, message: (err as Error).message });
     setStatus("failed", lastTick);

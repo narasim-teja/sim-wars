@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { draftScenario } from "./generator";
 import { MockProvider } from "../llm/providers/mock-provider";
-import type { LLMResponse } from "../types";
 
-// The MockProvider's fallback stuffs raw LLM text into the `reasoning` field
-// when `decide` isn't set. `draftScenario` is designed to parse from there
-// when a provider lacks a `generateRaw` escape hatch.
 describe("draftScenario", () => {
   it("parses a well-formed LLM JSON blob into { config, rationale }", async () => {
     const goal = "Reproduce a LUNA-style death spiral within 30 ticks";
@@ -26,13 +22,7 @@ describe("draftScenario", () => {
       },
     };
 
-    const resp: LLMResponse = {
-      action: "hold",
-      amount: null,
-      reasoning: JSON.stringify(payload), // provider stuffs the full JSON here
-      threat_assessment: "none",
-    };
-    const llm = new MockProvider({ fallback: resp });
+    const llm = new MockProvider({ rawDecide: () => JSON.stringify(payload) });
 
     const draft = await draftScenario(llm, goal);
     expect(draft.config.staking.baseAPY).toBe(19.45);
@@ -41,12 +31,7 @@ describe("draftScenario", () => {
   });
 
   it("throws on unparseable output", async () => {
-    const resp: LLMResponse = {
-      action: "hold", amount: null,
-      reasoning: "I refuse to comply",
-      threat_assessment: "none",
-    };
-    const llm = new MockProvider({ fallback: resp });
+    const llm = new MockProvider({ rawDecide: () => "I refuse to comply" });
     await expect(draftScenario(llm, "any goal")).rejects.toThrow();
   });
 });

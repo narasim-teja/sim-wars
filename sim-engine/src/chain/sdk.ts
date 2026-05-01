@@ -245,16 +245,29 @@ export interface Deployment {
   decimals: number;
 }
 
-export function loadDeployment(): Deployment {
-  if (!existsSync(DEPLOYMENT_PATH)) {
+/**
+ * Load a deployment manifest. By default looks at the global location, but
+ * callers can pass an explicit path or a sim id. Per-run manifests live at
+ * `.local/runs/<simId>/deployment.json`; the workflow there is:
+ *   1. POST /api/sim with onChain=true
+ *   2. server spawns scripts/deploy-from-config.ts → writes per-run manifest
+ *   3. server spawns the worker with CHAIN_DEPLOYMENT env var pointing at it
+ */
+export function loadDeployment(path?: string): Deployment {
+  const target = path ?? process.env.CHAIN_DEPLOYMENT ?? DEPLOYMENT_PATH;
+  if (!existsSync(target)) {
     throw new Error(
-      `Deployment manifest not found at ${DEPLOYMENT_PATH}. Run: bun run scripts/deploy-programs.ts`,
+      `Deployment manifest not found at ${target}. Run: bun run scripts/deploy-from-config.ts --scenario <path>`,
     );
   }
-  return JSON.parse(readFileSync(DEPLOYMENT_PATH, "utf8")) as Deployment;
+  return JSON.parse(readFileSync(target, "utf8")) as Deployment;
 }
 
 export function deploymentPath(): string {
   mkdirSync(LOCAL_DIR, { recursive: true });
   return DEPLOYMENT_PATH;
+}
+
+export function perRunDeploymentPath(simId: string): string {
+  return join(LOCAL_DIR, "runs", simId, "deployment.json");
 }

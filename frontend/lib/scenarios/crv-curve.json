@@ -1,0 +1,113 @@
+{
+  "config": {
+    "token": {
+      "totalSupply": 3303030000,
+      "decimals": 6,
+      "allocations": [
+        {
+          "name": "Community LP",
+          "percent": 62,
+          "vestingMonths": 0
+        },
+        {
+          "name": "Shareholders",
+          "percent": 30,
+          "vestingMonths": 48
+        },
+        {
+          "name": "Employees",
+          "percent": 3,
+          "vestingMonths": 24
+        },
+        {
+          "name": "Reserve",
+          "percent": 5,
+          "vestingMonths": 12
+        }
+      ]
+    },
+    "staking": {
+      "baseAPY": 6,
+      "maxAPY": 12,
+      "lockPeriodTicks": 1460,
+      "unstakePenaltyPercent": 0
+    },
+    "amm": {
+      "initialLiquidity": 150000000,
+      "initialPrice": 5,
+      "feeTier": 0.04
+    },
+    "governance": {
+      "proposalThresholdPercent": 1,
+      "quorumPercent": 30,
+      "votingPeriodTicks": 7,
+      "timelockTicks": 3
+    }
+  },
+  "agents": [
+    {
+      "id": "WHALE_01",
+      "type": "whale",
+      "name": "veWhale",
+      "complexity": "reasoning"
+    },
+    {
+      "id": "WHALE_02",
+      "type": "whale",
+      "name": "Bribe-Market Whale",
+      "complexity": "reasoning"
+    },
+    {
+      "id": "GOV_01",
+      "type": "governance_attacker",
+      "name": "Gauge-Weight Attacker",
+      "complexity": "reasoning"
+    },
+    {
+      "id": "FARMER_01",
+      "type": "yield_farmer",
+      "name": "Locked Yield Farmer",
+      "complexity": "fast"
+    },
+    {
+      "id": "FARMER_02",
+      "type": "yield_farmer",
+      "name": "Convex Boost Farmer",
+      "complexity": "fast"
+    },
+    {
+      "id": "HOLDER_01",
+      "type": "long_term_holder",
+      "name": "Conviction Holder",
+      "complexity": "standard"
+    },
+    {
+      "id": "HOLDER_02",
+      "type": "long_term_holder",
+      "name": "Patient Holder",
+      "complexity": "standard"
+    },
+    {
+      "id": "ARB_01",
+      "type": "arbitrageur",
+      "name": "Pool Arbitrageur",
+      "complexity": "standard"
+    },
+    {
+      "id": "TREASURY_01",
+      "type": "treasury",
+      "name": "Curve DAO Treasury",
+      "complexity": "standard"
+    },
+    {
+      "id": "DEGEN_01",
+      "type": "retail_degen",
+      "name": "Reluctant Degen",
+      "complexity": "fast"
+    }
+  ],
+  "tickConfig": {
+    "intervalMs": 5000,
+    "maxTicks": 30
+  }
+}

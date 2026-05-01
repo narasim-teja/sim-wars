@@ -20,6 +20,10 @@ export class RoutingLLMClient implements LLMClient {
     return this.primary.generate(prompt, opts);
   }
 
+  async generateRaw(prompt: string, opts?: LLMGenerateOptions): Promise<string> {
+    return this.primary.generateRaw(prompt, opts);
+  }
+
   async generateBatch(items: LLMBatchItem[]): Promise<Map<string, LLMResponse>> {
     if (!this.boost) return this.primary.generateBatch(items);
 

@@ -18,6 +18,8 @@ export interface RunPaths {
   scenarioFile: string;
   dbFile: string;
   statusFile: string;
+  /** Generated post-sim by the report generator. */
+  reportFile: string;
 }
 
 export function pathsFor(simId: string, runsDir: string = RUNS_DIR): RunPaths {
@@ -30,5 +32,6 @@ export function pathsFor(simId: string, runsDir: string = RUNS_DIR): RunPaths {
     scenarioFile: join(root, "scenario.json"),
     dbFile: join(root, "sim.sqlite"),
     statusFile: join(root, "status.json"),
+    reportFile: join(root, "report.json"),
   };
 }

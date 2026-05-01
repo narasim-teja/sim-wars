@@ -24,6 +24,7 @@ export default function Home() {
   const [selected, setSelected] = useState<ScenarioId>("luna-20");
   const [maxTicks, setMaxTicks] = useState(50);
   const [tickInterval, setTickInterval] = useState(0);
+  const [onChain, setOnChain] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +114,7 @@ export default function Home() {
         config,
         agents: activeAgents,
         tickConfig: { intervalMs: tickInterval, maxTicks },
-        onChain: false,
+        onChain,
       };
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
@@ -378,6 +379,11 @@ export default function Home() {
               step={500}
             />
 
+            <ChainToggle
+              checked={onChain}
+              onChange={setOnChain}
+            />
+
             <button
               onClick={launch}
               disabled={launching || (mode === "custom" && !customReady)}
@@ -398,6 +404,7 @@ export default function Home() {
 
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
               POST <span className="text-zinc-700">/api/sim</span>
+              {onChain && <span className="text-emerald-700"> · on-chain</span>}
               {mode === "custom" && customMeta && (
                 <span className="text-zinc-500">
                   {" · "}config from <span className="text-zinc-700">{truncate(customMeta.source.label, 38)}</span>
@@ -455,6 +462,51 @@ function Stat({ header, sub }: { header: string; sub: string }) {
       <span className="text-2xl font-semibold tracking-tight text-zinc-900">{header}</span>
       <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">{sub}</span>
     </div>
+  );
+}
+
+function ChainToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (b: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer flex-col gap-1.5 rounded border border-zinc-200 bg-white px-3 py-2.5 hover:border-zinc-400">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+          ON-CHAIN MODE
+        </span>
+        <span
+          role="switch"
+          aria-checked={checked}
+          onClick={() => onChange(!checked)}
+          className={cn(
+            "relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition-colors",
+            checked ? "bg-emerald-600" : "bg-zinc-300",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-4 w-4 translate-x-0.5 rounded-full bg-white shadow transition-transform",
+              checked && "translate-x-[18px]",
+            )}
+          />
+        </span>
+      </div>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="sr-only"
+      />
+      <span className="text-[11px] leading-5 text-zinc-500">
+        Deploy mints + AMM pool + staking + governance to the configured Solana cluster, then run.
+        Each agent gets a real keypair + ATAs. Requires deployer SOL (≈ 0.5 + 5×agents). Without
+        this, the sim runs against an in-memory AMM only.
+      </span>
+    </label>
   );
 }
 
