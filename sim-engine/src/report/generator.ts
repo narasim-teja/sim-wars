@@ -28,7 +28,9 @@ import type {
   HistoricalComparison,
   ResilienceGrade,
   ChainActivity,
+  FieldSources,
 } from "./types";
+import { buildDeploymentPlan } from "../chain/deployment-plan";
 import { existsSync, readFileSync } from "node:fs";
 import {
   baseMintAddress,
@@ -51,6 +53,12 @@ export interface GenerateReportOptions {
   deathSpiralDetected: boolean;
   deathSpiralAtTick: number | null;
   finalStatus: string;
+  /**
+   * Dotted paths the user grounded in the source or edited in the form.
+   * Used to mark which config sections are "real" vs. silently defaulted.
+   * Omitted ⇒ no fieldSources block is emitted (legacy preset runs).
+   */
+  extractedFields?: string[];
   /** Cap LLM transcript length so the prompt stays under ~16k tokens. */
   maxTickLines?: number;
   /** Cap the number of representative actions per agent included in the prompt. */
@@ -61,7 +69,7 @@ const MAX_TICK_LINES_DEFAULT = 60;
 const MAX_ACTIONS_PER_AGENT_DEFAULT = 6;
 
 export async function generateReport(opts: GenerateReportOptions): Promise<SimulationReport> {
-  const { simId, config, agents, db, llm, deathSpiralDetected, deathSpiralAtTick, finalStatus } = opts;
+  const { simId, config, agents, db, llm, deathSpiralDetected, deathSpiralAtTick, finalStatus, extractedFields } = opts;
   const maxTickLines = opts.maxTickLines ?? MAX_TICK_LINES_DEFAULT;
   const maxActionsPerAgent = opts.maxActionsPerAgent ?? MAX_ACTIONS_PER_AGENT_DEFAULT;
 
@@ -71,10 +79,17 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     actionsByAgent.set(persona.id, db.getAgentHistory(simId, persona.id, 200));
   }
 
+  const fieldSources = computeFieldSources(extractedFields);
+
   // Chain-activity proof. Only populated when a deployment manifest exists
   // for this sim (i.e. the run was on-chain). Null otherwise — the frontend
-  // hides the section.
-  const chainActivity = computeChainActivity(simId, db);
+  // hides the section. We also re-run the deployment plan with the same
+  // extractedFields so we can attach `skippedPrograms` for the UI.
+  const chainActivity = computeChainActivity(simId, db, {
+    config,
+    agents,
+    extractedFields,
+  });
 
   const meta = computeMeta({
     simId,
@@ -85,6 +100,7 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     agentCount: agents.length,
     initialPrice: config.amm.initialPrice,
     llmModelName: llm.name,
+    metadata: config.metadata,
   });
 
   const resilienceScore = computeResilience({
@@ -121,6 +137,7 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     agentLines,
     deathSpiralDetected,
     deathSpiralAtTick,
+    fieldSources,
   });
 
   let narrative = "";
@@ -163,9 +180,12 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
   });
 
   // Recommendations: if the LLM was silent, fall back to engine-derived ones.
-  const recommendations = llmRecommendations.length > 0
+  // Filter out recommendations targeting sections the user never grounded —
+  // suggesting "lower staking.baseAPY" for a paper with no staking is noise.
+  const allRecs = llmRecommendations.length > 0
     ? llmRecommendations
     : engineRecommendations(config, meta, deathSpiralDetected);
+  const recommendations = filterRecommendationsBySource(allRecs, fieldSources);
 
   return {
     simId,
@@ -184,7 +204,37 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     recommendations,
     comparison: llmComparison ?? comparison,
     chainActivity,
+    ...(fieldSources ? { fieldSources } : {}),
     narrative,
+  };
+}
+
+/**
+ * Build the per-section "did the user ground this?" map. When the request
+ * doesn't carry `extractedFields` we return null — the frontend then renders
+ * the report without the provenance panel, matching legacy behavior.
+ */
+function computeFieldSources(extractedFields: string[] | undefined): FieldSources | null {
+  if (!Array.isArray(extractedFields)) return null;
+  const cleaned = extractedFields.filter((f): f is string => typeof f === "string" && f.length > 0);
+  const has = (section: string): boolean => {
+    const prefix = `${section}.`;
+    for (const f of cleaned) {
+      const t = f.trim();
+      if (t === section || t.startsWith(prefix)) return true;
+    }
+    return false;
+  };
+  return {
+    extracted: cleaned,
+    sectionExtracted: {
+      token: has("token"),
+      staking: has("staking"),
+      amm: has("amm"),
+      governance: has("governance"),
+      stablecoin: has("stablecoin"),
+      veToken: has("veToken"),
+    },
   };
 }
 
@@ -199,7 +249,15 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
  * than via `loadDeployment()` — the latter would also fall back to the legacy
  * top-level `.local/deployment.json`, which is stale across sim sessions.
  */
-function computeChainActivity(simId: string, db: SimDatabase): ChainActivity | null {
+function computeChainActivity(
+  simId: string,
+  db: SimDatabase,
+  planInputs: {
+    config: SimulationConfig;
+    agents: AgentPersona[];
+    extractedFields: string[] | undefined;
+  },
+): ChainActivity | null {
   const manifestPath = perRunDeploymentPath(simId);
   if (!existsSync(manifestPath)) return null;
   let dep: Deployment;
@@ -226,6 +284,17 @@ function computeChainActivity(simId: string, db: SimDatabase): ChainActivity | n
     { name: quoteSymbol(dep), address: quoteMintAddress(dep) },
   ];
 
+  // Re-run the plan with the same inputs the API used so the report can
+  // surface "we deliberately skipped X" alongside the live deploy. The plan
+  // itself is cheap (no network calls).
+  const replayedPlan = buildDeploymentPlan({
+    config: planInputs.config,
+    agents: planInputs.agents,
+    onChain: true,
+    extractedFields: planInputs.extractedFields,
+  });
+  const skippedPrograms = replayedPlan.skipped.length > 0 ? replayedPlan.skipped : undefined;
+
   return {
     cluster: dep.cluster,
     explorerBase: explorerBaseFor(dep.cluster),
@@ -236,6 +305,7 @@ function computeChainActivity(simId: string, db: SimDatabase): ChainActivity | n
     programs,
     mints,
     pool: dep.pool ? { address: dep.pool.address } : null,
+    ...(skippedPrograms ? { skippedPrograms } : {}),
   };
 }
 
@@ -268,8 +338,9 @@ function computeMeta(args: {
   agentCount: number;
   initialPrice: number;
   llmModelName: string;
+  metadata?: SimulationConfig["metadata"];
 }): SimulationReport["meta"] {
-  const { tickStates, finalStatus, deathSpiralDetected, deathSpiralAtTick, agentCount, initialPrice, llmModelName } = args;
+  const { tickStates, finalStatus, deathSpiralDetected, deathSpiralAtTick, agentCount, initialPrice, llmModelName, metadata } = args;
   const last = tickStates.at(-1);
   const finalPrice = last?.tokenPrice ?? initialPrice;
   const pricePctChange = initialPrice > 0 ? ((finalPrice - initialPrice) / initialPrice) * 100 : 0;
@@ -283,6 +354,10 @@ function computeMeta(args: {
   const finalGini = last?.giniCoefficient ?? 0;
   return {
     generatedAtMs: Date.now(),
+    ...(metadata?.protocolName ? { protocolName: metadata.protocolName } : {}),
+    ...(metadata?.tokenSymbol ? { tokenSymbol: metadata.tokenSymbol } : {}),
+    ...(metadata?.quoteSymbol ? { quoteSymbol: metadata.quoteSymbol } : {}),
+    ...(metadata?.protocolKind ? { protocolKind: metadata.protocolKind } : {}),
     totalTicks: tickStates.length,
     finalStatus,
     agentCount,
@@ -518,6 +593,26 @@ function engineRecommendations(
   return recs;
 }
 
+/**
+ * Drop recommendations whose `parameter` lives in a config section the user
+ * never grounded in the source / edited. When `fieldSources` is null
+ * (legacy preset runs) all recommendations pass through.
+ */
+function filterRecommendationsBySource(
+  recs: Recommendation[],
+  fieldSources: FieldSources | null,
+): Recommendation[] {
+  if (!fieldSources) return recs;
+  return recs.filter((r) => {
+    const section = r.parameter.split(".")[0];
+    if (!section) return true;
+    if (section in fieldSources.sectionExtracted) {
+      return fieldSources.sectionExtracted[section as keyof FieldSources["sectionExtracted"]];
+    }
+    return true;
+  });
+}
+
 function synthesizeExecSummary(args: {
   deathSpiralDetected: boolean;
   pricePctChange: number;
@@ -587,12 +682,29 @@ interface PromptArgs {
   agentLines: string;
   deathSpiralDetected: boolean;
   deathSpiralAtTick: number | null;
+  fieldSources: FieldSources | null;
 }
 
 function buildReportPrompt(args: PromptArgs): string {
-  const { config, meta, resilienceScore, transcript, agentLines, deathSpiralDetected, deathSpiralAtTick } = args;
+  const { config, meta, resilienceScore, transcript, agentLines, deathSpiralDetected, deathSpiralAtTick, fieldSources } = args;
+  const identity = [
+    meta.protocolName ? `protocol: ${meta.protocolName}` : null,
+    meta.tokenSymbol ? `token: ${meta.tokenSymbol}` : null,
+    meta.quoteSymbol ? `quote: ${meta.quoteSymbol}` : null,
+    meta.protocolKind ? `kind: ${meta.protocolKind}` : null,
+  ].filter(Boolean).join(", ");
+  // Tell the model which sections came from the source vs. were silently
+  // defaulted by the schema. Prevents recommendations like "tune
+  // staking.baseAPY" when the protocol has no staking spec at all.
+  const sourceMap = fieldSources
+    ? `\nFIELD PROVENANCE (which sections came from the source):
+${Object.entries(fieldSources.sectionExtracted)
+  .map(([k, v]) => `  ${k}: ${v ? "extracted" : "DEFAULT (not in source — do NOT recommend tuning these)"}`)
+  .join("\n")}
+Treat any DEFAULT section as fabricated context; failure-mode descriptions and recommendations must focus on extracted sections only.\n`
+    : "";
   return `You are an adversarial DeFi auditor. A live, multi-agent tokenomics simulation just finished and you must write the post-mortem report.
-
+${identity ? `\nPROTOCOL UNDER TEST: ${identity}\n(Use the token symbol when referring to price moves; use the protocol name in the exec summary.)\n` : ""}${sourceMap}
 CONFIG (the parameters under test):
   totalSupply: ${config.token.totalSupply}
   initialPrice: $${config.amm.initialPrice}

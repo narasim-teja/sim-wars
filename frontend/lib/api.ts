@@ -29,11 +29,40 @@ export interface CreateSimBody {
     tokenSymbol?: string;
     quoteSymbol?: string;
   };
+  /**
+   * Dotted paths the user grounded in the source OR explicitly edited in the
+   * config form (e.g. ["staking.baseAPY"]). Drives mode-aware deployment:
+   * programs whose section is absent here are skipped on-chain. Omit for
+   * preset scenarios — they get the legacy "deploy everything" behavior.
+   */
+  extractedFields?: string[];
   tickConfig: { intervalMs: number; maxTicks: number };
   onChain?: boolean;
 }
 
-export async function createSim(body: CreateSimBody): Promise<{ simId: string; status: string; agentCount: number }> {
+/** Mirror of sim-engine `DeploymentPlan` — returned by `POST /api/sim`. */
+export interface DeploymentPlanResponse {
+  symbols: { base: string; quote: string };
+  programs: { tokenMint: true; ammDex: true; staking: boolean; governance: boolean };
+  skipped: {
+    program: "staking" | "governance" | "stablecoin";
+    reason: string;
+    enableHint: string;
+  }[];
+  blockers: string[];
+  warnings: string[];
+  liquidSeedAllocation: string | null;
+  requiredBaseTokens: number;
+}
+
+export interface CreateSimResponse {
+  simId: string;
+  status: string;
+  agentCount: number;
+  deploymentPlan: DeploymentPlanResponse;
+}
+
+export async function createSim(body: CreateSimBody): Promise<CreateSimResponse> {
   const r = await fetch(`${API_BASE}/api/sim`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

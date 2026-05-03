@@ -53,12 +53,36 @@ export interface ChainActivity {
   programs: { name: string; address: string }[];
   mints: { name: string; address: string }[];
   pool: { address: string } | null;
+  /** Programs intentionally not deployed (config section never grounded). */
+  skippedPrograms?: {
+    program: "staking" | "governance" | "stablecoin";
+    reason: string;
+    enableHint: string;
+  }[];
+}
+
+/** Per-section "did the user ground this?" map. */
+export interface FieldSources {
+  extracted: string[];
+  sectionExtracted: {
+    token: boolean;
+    staking: boolean;
+    amm: boolean;
+    governance: boolean;
+    stablecoin: boolean;
+    veToken: boolean;
+  };
 }
 
 export interface SimulationReport {
   simId: string;
   meta: {
     generatedAtMs: number;
+    /** Optional — populated when extraction provided a metadata block. */
+    protocolName?: string;
+    tokenSymbol?: string;
+    quoteSymbol?: string;
+    protocolKind?: string;
     totalTicks: number;
     finalStatus: string;
     agentCount: number;
@@ -82,6 +106,8 @@ export interface SimulationReport {
   comparison: HistoricalComparison | null;
   /** Optional — present when the run was on-chain and a deployment was found. */
   chainActivity?: ChainActivity | null;
+  /** Optional — present when the request carried `extractedFields`. */
+  fieldSources?: FieldSources;
   narrative: string;
 }
 

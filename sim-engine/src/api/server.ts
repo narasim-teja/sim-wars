@@ -62,6 +62,13 @@ interface CreateSimBody {
     tokenSymbol?: string;
     quoteSymbol?: string;
   };
+  /**
+   * Dotted paths the user grounded in the source OR explicitly edited in the
+   * config form. Drives mode-aware deployment: programs whose section is
+   * absent from this list are skipped on-chain. Omitted ⇒ legacy preset
+   * behavior (deploy everything `onChain` implies).
+   */
+  extractedFields?: string[];
   tickConfig: TickConfig;
   onChain?: boolean;
 }
@@ -130,6 +137,7 @@ async function handleCreate(req: Request): Promise<Response> {
     config: normalizedConfig,
     agents: resolvedAgents,
     onChain: !!body.onChain,
+    extractedFields: Array.isArray(body.extractedFields) ? body.extractedFields : undefined,
   });
   if (body.onChain && deploymentPlan.blockers.length > 0) {
     return json(
@@ -163,7 +171,7 @@ async function handleCreate(req: Request): Promise<Response> {
     // Fire-and-forget the deploy → worker chain. The HTTP response returns
     // immediately so the frontend can subscribe to /ws/sim/:id and watch
     // the chain:deploy:* events stream in.
-    runDeployThenWorker(simId, persistedBody).catch((err) => {
+    runDeployThenWorker(simId, persistedBody, deploymentPlan).catch((err) => {
       appendEvent(paths.eventsFile, {
         kind: "chain:deploy:error",
         ts: Date.now(),
@@ -205,17 +213,21 @@ function spawnWorker(simId: string, extraEnv: Record<string, string> = {}): void
   });
 }
 
-async function runDeployThenWorker(simId: string, body: CreateSimBody): Promise<void> {
+async function runDeployThenWorker(
+  simId: string,
+  body: CreateSimBody,
+  plan: { programs: { staking: boolean; governance: boolean } },
+): Promise<void> {
   const paths = pathsFor(simId);
   appendEvent(paths.eventsFile, { kind: "chain:deploy:start", ts: Date.now(), simId, step: "starting" });
 
-  // Decide which optional programs to deploy based on the (already-normalized)
-  // config shape. Staking is always useful when on-chain is requested.
-  // Governance is opt-in: enabled when both thresholds are non-zero.
-  const withStaking = true;
-  const govThreshold = body.config.governance?.proposalThresholdPercent ?? 0;
-  const govQuorum = body.config.governance?.quorumPercent ?? 0;
-  const withGovernance = govThreshold > 0 && govQuorum > 0;
+  // Honor the deployment plan from buildDeploymentPlan — when the user
+  // didn't extract or edit any staking / governance fields, those programs
+  // are skipped here too. Backstop: even with `extractedFields` undefined
+  // (legacy callers), `plan.programs` still defaults to "deploy everything
+  // an on-chain run needs", matching the previous behavior.
+  const withStaking = plan.programs.staking;
+  const withGovernance = plan.programs.governance;
 
   const deployArgs = [
     "run", DEPLOY_SCRIPT,

@@ -85,6 +85,41 @@ export interface ChainActivity {
   programs: { name: string; address: string }[];
   mints: { name: string; address: string }[];
   pool: { address: string } | null;
+  /**
+   * Programs the deployment plan intentionally skipped because the user
+   * never extracted or edited their config block. Useful so the report
+   * doesn't claim to have stress-tested e.g. staking when no staking
+   * program was ever deployed.
+   */
+  skippedPrograms?: {
+    program: "staking" | "governance" | "stablecoin";
+    reason: string;
+    enableHint: string;
+  }[];
+}
+
+/**
+ * Per-section source map: which engine inputs were grounded in the source
+ * (or edited by the user) vs. silently filled by schema defaults. Keyed by
+ * top-level config section. The frontend uses this to badge defaulted
+ * parameters in the report so reviewers can tell what's grounded.
+ */
+export interface FieldSources {
+  /** All dotted paths the user grounded or edited (verbatim from the request). */
+  extracted: string[];
+  /**
+   * Convenience flags: was *any* field in this section grounded? `false`
+   * means every value in that section came from schema defaults — so any
+   * "we tested staking" claim in the narrative should be read with skepticism.
+   */
+  sectionExtracted: {
+    token: boolean;
+    staking: boolean;
+    amm: boolean;
+    governance: boolean;
+    stablecoin: boolean;
+    veToken: boolean;
+  };
 }
 
 export interface SimulationReport {
@@ -92,6 +127,11 @@ export interface SimulationReport {
   /** Engine-derived metadata captured at report time. */
   meta: {
     generatedAtMs: number;
+    /** Protocol/token identity carried over from config.metadata, when present. */
+    protocolName?: string;
+    tokenSymbol?: string;
+    quoteSymbol?: string;
+    protocolKind?: string;
     totalTicks: number;
     finalStatus: string;
     agentCount: number;
@@ -117,6 +157,11 @@ export interface SimulationReport {
   comparison: HistoricalComparison | null;
   /** Optional — present when the run was on-chain and a deployment was found. */
   chainActivity?: ChainActivity | null;
+  /**
+   * Source map for parameters under test — only populated when the request
+   * carried `extractedFields`. Absent for legacy preset runs.
+   */
+  fieldSources?: FieldSources;
   /**
    * Raw LLM text. Helpful when the structured fields look thin and the user
    * wants the model's full take.

@@ -6,6 +6,8 @@ import { TopNav } from "@/components/TopNav";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { CustomSource } from "@/components/upload/CustomSource";
 import { ConfigEditor } from "@/components/upload/ConfigEditor";
+import { DeploymentPreview } from "@/components/upload/DeploymentPreview";
+import { previewDeploymentPlan } from "@/lib/deployment-plan";
 import { SCENARIO_PRESETS } from "@/lib/scenarios";
 import { createSim, type RosterPreset } from "@/lib/api";
 import {
@@ -103,6 +105,34 @@ export default function Home() {
 
   const customReady = mode === "custom" && customConfig !== null;
 
+  /**
+   * Union of fields the LLM grounded in the source AND fields the user
+   * edited in the form. The backend uses this to decide which on-chain
+   * programs to deploy: a section absent from this set is treated as "the
+   * user never expressed intent here, so don't deploy a program for it."
+   */
+  const groundedFields = useMemo<string[]>(() => {
+    if (mode !== "custom") return [];
+    const set = new Set<string>(customExtractedFields);
+    for (const f of customEditedFields) set.add(f);
+    return Array.from(set);
+  }, [mode, customExtractedFields, customEditedFields]);
+
+  /**
+   * Live deploy preflight — only meaningful when on-chain is on for a
+   * custom config. Computed client-side as a mirror of the backend logic so
+   * the preview updates the moment the user toggles a setting; the server
+   * re-runs the same logic at launch.
+   */
+  const deployPreview = useMemo(() => {
+    if (mode !== "custom" || !customConfig) return null;
+    return previewDeploymentPlan({
+      config: customConfig,
+      onChain,
+      extractedFields: groundedFields,
+    });
+  }, [mode, customConfig, onChain, groundedFields]);
+
   const validation = useMemo(() => {
     if (mode === "preset" || !customConfig) return { ok: true as const, blockers: [] as string[], warnings: [] as string[] };
     const blockers: string[] = [];
@@ -188,6 +218,14 @@ export default function Home() {
               },
             }
           : {};
+      // Mode-aware deployment: send the union of grounded + edited paths so
+      // the backend skips programs the user didn't express intent for.
+      // Preset scenarios omit this field — they keep the legacy "deploy
+      // everything on-chain" behavior.
+      const fieldsBody =
+        mode === "custom" && groundedFields.length > 0
+          ? { extractedFields: groundedFields }
+          : {};
       // Two payload shapes:
       //   - sendStaticRoster: preserve the hand-written preset personas
       //   - else: hand the count + preset to the backend expander
@@ -198,6 +236,7 @@ export default function Home() {
             tickConfig: { intervalMs: tickInterval, maxTicks },
             onChain,
             ...extractionMeta,
+            ...fieldsBody,
           }
         : {
             config,
@@ -206,6 +245,7 @@ export default function Home() {
             tickConfig: { intervalMs: tickInterval, maxTicks },
             onChain,
             ...extractionMeta,
+            ...fieldsBody,
           };
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
@@ -349,7 +389,7 @@ export default function Home() {
                     </button>
 
                     {editorOpen && (
-                      <div className="rounded-md border border-zinc-200 bg-white p-4">
+                      <div id="custom-config-editor" className="rounded-md border border-zinc-200 bg-white p-4">
                         <ConfigEditor
                           config={customConfig}
                           extractedFields={customExtractedFields}
@@ -502,6 +542,27 @@ export default function Home() {
               checked={onChain}
               onChange={setOnChain}
             />
+
+            {onChain && deployPreview && (
+              <DeploymentPreview
+                plan={deployPreview}
+                onJumpToField={(path) => {
+                  setEditorOpen(true);
+                  // Best-effort: scroll to the editor block. The ConfigEditor
+                  // doesn't currently support per-field anchors, so opening
+                  // the panel + a soft scroll is the cleanest hint.
+                  void path;
+                  if (typeof window !== "undefined") {
+                    requestAnimationFrame(() => {
+                      document.getElementById("custom-config-editor")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    });
+                  }
+                }}
+              />
+            )}
 
             <button
               onClick={launch}

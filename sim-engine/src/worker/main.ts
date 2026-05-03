@@ -14,6 +14,8 @@ interface ScenarioPayload {
   agents: AgentPersona[];
   tickConfig: TickConfig;
   onChain?: boolean;
+  /** Dotted paths the user grounded in the source or edited in the form. */
+  extractedFields?: string[];
 }
 
 function parseArgs(argv: string[]): { simId: string | null } {
@@ -154,6 +156,7 @@ async function main() {
           deathSpiralDetected: summary.deathSpiralDetected,
           deathSpiralAtTick: summary.deathSpiralAtTick,
           finalStatus: status,
+          extractedFields: scenario.extractedFields,
         });
         writeFileSync(paths.reportFile, JSON.stringify(report, null, 2));
         events.emit({

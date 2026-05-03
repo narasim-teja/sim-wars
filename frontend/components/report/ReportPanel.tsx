@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Copy, Download, ExternalLink } from "lucide-react";
-import type { SimulationReport, ResilienceGrade, ChainActivity } from "@/lib/report";
+import type { SimulationReport, ResilienceGrade, ChainActivity, FieldSources } from "@/lib/report";
 import { cn } from "@/lib/utils";
 
 const GRADE_COLOR: Record<ResilienceGrade, { bg: string; ring: string; fg: string }> = {
@@ -47,7 +47,15 @@ export function ReportPanel({
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500">
             Sim-wars · post-mortem
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Resilience report</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+            Resilience report
+            {report.meta.protocolName && (
+              <span className="ml-2 text-zinc-500">· {report.meta.protocolName}</span>
+            )}
+            {report.meta.tokenSymbol && (
+              <span className="ml-1.5 font-mono text-base text-zinc-400">{report.meta.tokenSymbol}</span>
+            )}
+          </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] text-zinc-500">
             <span>sim {report.simId.slice(0, 12)}</span>
             <span>·</span>
@@ -126,6 +134,8 @@ export function ReportPanel({
           <Stat label="On-chain" value="off" sub="in-memory AMM only" />
         )}
       </div>
+
+      {report.fieldSources && <FieldProvenanceBanner sources={report.fieldSources} />}
 
       <Section number="01" title="Executive summary" subtitle="What happened">
         <p className="text-[13.5px] leading-7 text-zinc-800">{report.executiveSummary}</p>
@@ -381,6 +391,65 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Honest accounting of what's grounded vs. defaulted. Sits under the stat
+ * strip so reviewers see it before reading any narrative claims about
+ * "the protocol's staking yield" etc.
+ *
+ * Skipped sections (defaults) get a muted style; grounded sections get the
+ * green badge. The whole banner is hidden for legacy preset runs (no
+ * `extractedFields` was sent → no `fieldSources` on the report).
+ */
+function FieldProvenanceBanner({ sources }: { sources: FieldSources }) {
+  const SECTIONS: { key: keyof FieldSources["sectionExtracted"]; label: string }[] = [
+    { key: "token",      label: "Token" },
+    { key: "amm",        label: "AMM" },
+    { key: "staking",    label: "Staking" },
+    { key: "governance", label: "Governance" },
+    { key: "stablecoin", label: "Stablecoin" },
+    { key: "veToken",    label: "veToken" },
+  ];
+  const grounded = SECTIONS.filter((s) => sources.sectionExtracted[s.key]);
+  const defaulted = SECTIONS.filter((s) => !sources.sectionExtracted[s.key]);
+  return (
+    <div className="rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 print:break-inside-avoid">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-600">
+          Field provenance
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+          what came from your source
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {grounded.map((s) => (
+          <span
+            key={s.key}
+            className="inline-flex h-5 items-center rounded border border-emerald-200 bg-emerald-50 px-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-700"
+          >
+            {s.label} · grounded
+          </span>
+        ))}
+        {defaulted.map((s) => (
+          <span
+            key={s.key}
+            className="inline-flex h-5 items-center rounded border border-zinc-200 bg-white px-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500"
+          >
+            {s.label} · default
+          </span>
+        ))}
+      </div>
+      {defaulted.length > 0 && (
+        <p className="mt-1.5 text-[11.5px] leading-5 text-zinc-600">
+          Sections marked <span className="font-mono">default</span> were not in the source — they
+          ran with schema fallback values. Recommendations targeting these sections are
+          suppressed automatically; treat any narrative claims about them as illustrative.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * On-chain activity block: shows the on-chain percentage, per-action
  * landing rate, and explorer links for the deployed mints + programs.
  *
@@ -476,6 +545,43 @@ function ChainActivityBlock({ activity }: { activity: ChainActivity }) {
           explorerBase={activity.explorerBase}
         />
       </div>
+
+      {/* Honest accounting of what we did NOT deploy and why. Hidden when
+          the run was a preset (no extractedFields → no skip rows). */}
+      {activity.skippedPrograms && activity.skippedPrograms.length > 0 && (
+        <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50/40 p-3">
+          <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
+            <span className="block h-1.5 w-1.5 rotate-45 border border-zinc-500" />
+            Programs intentionally skipped
+          </div>
+          <p className="mb-2 text-[11.5px] leading-5 text-zinc-600">
+            The source didn&apos;t specify these mechanisms, so no on-chain program was
+            deployed for them. Recommendations referencing these sections are also
+            suppressed.
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {activity.skippedPrograms.map((s) => (
+              <li
+                key={s.program}
+                className="flex flex-col gap-0.5 rounded border border-zinc-200 bg-white px-2.5 py-1.5"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-700">
+                    {s.program}
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                    skipped
+                  </span>
+                </div>
+                <span className="text-[11.5px] leading-5 text-zinc-600">{s.reason}</span>
+                <span className="font-mono text-[10px] text-zinc-500">
+                  fill <span className="text-zinc-700">{s.enableHint}</span> to enable
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
