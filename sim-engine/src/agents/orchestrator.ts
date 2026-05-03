@@ -43,6 +43,7 @@ export class AgentOrchestrator {
   private memory: MemoryStore;
   private visibilityRules: VisibilityRule[];
   private targetRules: Record<string, { delay: number; fidelity: number }>;
+  private pendingUnstakes: Map<string, { amount: number; readyTick: number; requestTx: string }> = new Map();
   /**
    * Map of localProposalId → { chainProposalId, txSig }.
    * Voters skip the chain attempt when a local proposal has no entry —
@@ -74,8 +75,8 @@ export class AgentOrchestrator {
     this.orderedPersonaIds = orderAgentsForObservation(personas).map((p) => p.id);
 
     // Initialize agent states from personas.
-    // A1: personas can specify `stakedFraction` to start with tokens already staked,
-    // which kickstarts the LUNA reserve drain (Anchor Protocol reality at peak).
+    // Personas can specify `stakedFraction` to start with tokens already
+    // staked, which lets extracted staking-heavy protocols begin under load.
     for (const persona of personas) {
       const totalTokens = persona.initialCapital.token;
       const frac = Math.max(0, Math.min(1, persona.initialCapital.stakedFraction ?? 0));
@@ -200,6 +201,48 @@ export class AgentOrchestrator {
       total += reward;
     }
     return total;
+  }
+
+  /**
+   * Complete on-chain unstakes whose cooldown has expired. The request side
+   * happens when an agent chooses `unstake`; this settlement side runs at the
+   * start of later ticks after ChainExecutor.setTick().
+   */
+  async settlePendingUnstakes(tick: number): Promise<void> {
+    if (!this.chain || !this.chain.hasStaking()) return;
+    for (const [agentId, pending] of [...this.pendingUnstakes.entries()]) {
+      if (tick < pending.readyTick) continue;
+      const agent = this.agents.get(agentId);
+      if (!agent) {
+        this.pendingUnstakes.delete(agentId);
+        continue;
+      }
+      try {
+        await this.chain.completeUnstake(agentId);
+        const balances = await this.chain.getAgentBalances(agentId);
+        agent.holdings.token = balances.base;
+        agent.holdings.usdc = balances.quote;
+        this.pendingUnstakes.delete(agentId);
+      } catch (e) {
+        console.warn(`  chain complete_unstake failed for ${agentId}:`, (e as Error).message.slice(0, 160));
+      }
+    }
+  }
+
+  /** Best-effort reward claims for agents with active on-chain stake accounts. */
+  async claimRewardsOnChain(): Promise<void> {
+    if (!this.chain || !this.chain.hasStaking()) return;
+    for (const [agentId, agent] of this.agents) {
+      if (agent.holdings.staked <= 0) continue;
+      try {
+        await this.chain.claimRewards(agentId);
+        const balances = await this.chain.getAgentBalances(agentId);
+        agent.holdings.token = balances.base;
+        agent.holdings.usdc = balances.quote;
+      } catch {
+        // NoRewards / RewardVaultEmpty are expected on quiet ticks; keep claims best-effort.
+      }
+    }
   }
 
   /**
@@ -365,8 +408,8 @@ export class AgentOrchestrator {
             try {
               const result = await this.chain.swap(agent.persona.id, "buy", usdcToSpend);
               const balances = await this.chain.getAgentBalances(agent.persona.id);
-              agent.holdings.token = balances.luna;
-              agent.holdings.usdc = balances.ust;
+              agent.holdings.token = balances.base;
+              agent.holdings.usdc = balances.quote;
               const { reserveLuna, reserveUst } = await this.chain.getPrice();
               this.stateManager.setPoolReserves(reserveLuna, reserveUst);
               this.stateManager.recordTrade(agent.persona.id, "buy", usdcToSpend);
@@ -399,8 +442,8 @@ export class AgentOrchestrator {
             try {
               const result = await this.chain.swap(agent.persona.id, "sell", tokensToSell);
               const balances = await this.chain.getAgentBalances(agent.persona.id);
-              agent.holdings.token = balances.luna;
-              agent.holdings.usdc = balances.ust;
+              agent.holdings.token = balances.base;
+              agent.holdings.usdc = balances.quote;
               const { reserveLuna, reserveUst } = await this.chain.getPrice();
               this.stateManager.setPoolReserves(reserveLuna, reserveUst);
               this.stateManager.recordTrade(agent.persona.id, "sell", tokensToSell);
@@ -453,6 +496,40 @@ export class AgentOrchestrator {
       case "unstake": {
         const toUnstake = decision.amount || 0;
         if (toUnstake > 0) {
+          if (this.chain && this.chain.hasAgent(agent.persona.id) && this.chain.hasStaking()) {
+            if (!this.stateManager.canUnstake(agent.persona.id)) {
+              success = false;
+              break;
+            }
+            try {
+              const requested = await this.chain.requestUnstake(agent.persona.id, toUnstake);
+              const actual = this.stateManager.unstake(agent.persona.id, toUnstake);
+              if (actual <= 0) {
+                success = false;
+                break;
+              }
+              agent.holdings.staked -= actual;
+              const cooldown = this.chain.getDeployment().staking?.unstakeCooldownTicks ?? 0;
+              if (cooldown <= 0) {
+                await this.chain.completeUnstake(agent.persona.id);
+                const balances = await this.chain.getAgentBalances(agent.persona.id);
+                agent.holdings.token = balances.base;
+                agent.holdings.usdc = balances.quote;
+              } else {
+                this.pendingUnstakes.set(agent.persona.id, {
+                  amount: actual,
+                  readyTick: sim.tick + cooldown,
+                  requestTx: requested.txSignature,
+                });
+              }
+              this.stateManager.recordTrade(agent.persona.id, "unstake", actual);
+              return this.buildAction(agent, decision, sim, true, requested.txSignature);
+            } catch (e) {
+              console.error(`  chain unstake failed for ${agent.persona.id}:`, (e as Error).message.slice(0, 160));
+              success = false;
+              break;
+            }
+          }
           const actual = this.stateManager.unstake(agent.persona.id, toUnstake);
           if (actual > 0) {
             agent.holdings.staked -= actual;

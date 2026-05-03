@@ -2,7 +2,7 @@ import { TickController } from "../tick/tick-controller";
 import { StateManager } from "../tick/state-manager";
 import { AgentOrchestrator, type PreStakeProgressEvent } from "../agents/orchestrator";
 import { SimDatabase } from "../db/database";
-import { LunaScenarioController } from "../scenarios/luna-controller";
+import { StablecoinMechanismController } from "../scenarios/stablecoin-controller";
 import { ChainExecutor } from "../chain/action-executor";
 import { computeCoordinationEdges } from "../metrics/coordination";
 import type { LLMClient } from "../llm/types";
@@ -66,9 +66,9 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   // No-op when chain or staking program isn't deployed.
   await orchestrator.init({ onProgress: opts.onPreStakeProgress });
 
-  let lunaController: LunaScenarioController | null = null;
+  let stablecoinController: StablecoinMechanismController | null = null;
   if (config.stablecoin?.enabled) {
-    lunaController = new LunaScenarioController(config);
+    stablecoinController = new StablecoinMechanismController(config);
   }
 
   const tick = new TickController({
@@ -103,6 +103,8 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
       }
     }
 
+    await orchestrator.settlePendingUnstakes(tickNum);
+
     // Reward-vault inflation: emit fresh tokens per tick into the reward vault
     // so long-running sims don't dry up the once-seeded reward pool.
     // Amount = total_staked × rewardEmissionRate.
@@ -127,6 +129,10 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
           }
         }
       }
+    }
+
+    if (chainExecutor && chainExecutor.hasStaking() && tickNum % 5 === 0) {
+      await orchestrator.claimRewardsOnChain();
     }
 
     // Vesting: try to mint anything that just unlocked. The token-mint program
@@ -155,19 +161,19 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     const state = await stateManager.readState(tickNum, agentBalances);
     state.rewardsPaidThisTick = rewardsPaid;
 
-    if (lunaController) {
-      const r = lunaController.processTick(state);
-      state.stablecoinSupply = r.ustSupply;
+    if (stablecoinController) {
+      const r = stablecoinController.processTick(state);
+      state.stablecoinSupply = r.stablecoinSupply;
       state.reserveBalance = r.reserveBalance;
       state.pegPrice = r.pegPrice;
       state.initialReserveBalance = r.initialReserve;
       state.reserveDrainedThisTick = r.reserveDrainedThisTick;
       state.yieldPaidThisTick = r.yieldPaid;
       state.borrowerRevenueThisTick = r.borrowerRevenue;
-      if (r.lunaMinted > 0) {
-        stateManager.inflateSupply(r.lunaMinted);
-        state.totalSupply += r.lunaMinted;
-        stateManager.executeSwap(r.lunaMinted, true);
+      if (r.baseMinted > 0) {
+        stateManager.inflateSupply(r.baseMinted);
+        state.totalSupply += r.baseMinted;
+        stateManager.executeSwap(r.baseMinted, true);
         state.tokenPrice = stateManager.getPrice();
         state.priceHistory = [...state.priceHistory.slice(0, -1), state.tokenPrice];
       }

@@ -51,6 +51,14 @@ const RATIOS: Record<RosterPreset, Record<string, number>> = {
     WHALE: 3, GOV: 2, SYBIL: 1, MEV: 1, FARMER: 3, DEGEN: 3,
     HOLDER: 3, ARB: 2, TREASURY: 1, LP: 1, ANALYST: 1, INSIDER: 1, PANIC: 1,
   },
+  stress: {
+    WHALE: 4, GOV: 3, SYBIL: 2, MEV: 2, FARMER: 5, DEGEN: 5,
+    HOLDER: 2, ARB: 3, TREASURY: 1, LP: 2, ANALYST: 1, INSIDER: 1, PANIC: 2,
+  },
+  lockup_resilience: {
+    WHALE: 3, GOV: 2, HOLDER: 8, FARMER: 6, ARB: 2,
+    TREASURY: 1, DEGEN: 2, LP: 2, ANALYST: 1, INSIDER: 1,
+  },
 };
 
 /**
@@ -100,9 +108,9 @@ export function previewRoster(count: number, preset: RosterPreset): RosterPrevie
  * apropos roster. Used to auto-select the preset right after extraction.
  */
 export function rosterPresetFromProtocolKind(kind: string | undefined): RosterPreset {
-  if (!kind) return "luna";
-  if (kind === "veToken") return "crv";
-  if (kind === "stablecoin_algo") return "luna";
+  if (!kind) return "balanced";
+  if (kind === "veToken") return "lockup_resilience";
+  if (kind === "stablecoin_algo") return "stress";
   // memecoin / liquid_staking / amm_dex / lending / governance_token /
   // other → balanced is the safest bet.
   return "balanced";
@@ -120,5 +128,13 @@ export const ROSTER_PRESET_LABELS: Record<RosterPreset, { label: string; descrip
   balanced: {
     label: "Balanced stress test",
     description: "Even-ish across archetypes, no scenario bias. Use for novel tokenomics.",
+  },
+  stress: {
+    label: "Generic stress test",
+    description: "Adversarial but protocol-neutral. Best for custom stablecoins and new mechanisms.",
+  },
+  lockup_resilience: {
+    label: "Lock-up resilience",
+    description: "Long-term holders + farmers. Tests whether locks dampen exit cascades.",
   },
 };

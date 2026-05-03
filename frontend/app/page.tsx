@@ -169,7 +169,25 @@ export default function Home() {
     setLaunching(true);
     try {
       const config =
-        mode === "custom" && customConfig ? customConfig : presetScenario.payload.config;
+        mode === "custom" && customConfig
+          ? {
+              ...customConfig,
+              metadata: {
+                ...(customConfig.metadata ?? {}),
+                ...(customMeta?.protocolName ? { protocolName: customMeta.protocolName } : {}),
+                ...(customMeta?.protocolKind ? { protocolKind: customMeta.protocolKind } : {}),
+              },
+            }
+          : presetScenario.payload.config;
+      const extractionMeta =
+        mode === "custom" && customMeta
+          ? {
+              extractionMeta: {
+                protocolName: customMeta.protocolName,
+                protocolKind: customMeta.protocolKind,
+              },
+            }
+          : {};
       // Two payload shapes:
       //   - sendStaticRoster: preserve the hand-written preset personas
       //   - else: hand the count + preset to the backend expander
@@ -179,6 +197,7 @@ export default function Home() {
             agents: activeAgents,
             tickConfig: { intervalMs: tickInterval, maxTicks },
             onChain,
+            ...extractionMeta,
           }
         : {
             config,
@@ -186,6 +205,7 @@ export default function Home() {
             rosterPreset,
             tickConfig: { intervalMs: tickInterval, maxTicks },
             onChain,
+            ...extractionMeta,
           };
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
@@ -679,7 +699,7 @@ function estimateCost(agents: number): number {
   return decisionsPerRun * usdPerCall + reportCost;
 }
 
-const ROSTER_PRESETS_ORDERED: RosterPreset[] = ["luna", "crv", "balanced"];
+const ROSTER_PRESETS_ORDERED: RosterPreset[] = ["balanced", "stress", "lockup_resilience", "luna", "crv"];
 
 function RosterPresetPicker({
   value, onChange, autoFromKind,
@@ -700,7 +720,7 @@ function RosterPresetPicker({
           </span>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-5">
         {ROSTER_PRESETS_ORDERED.map((p) => {
           const active = value === p;
           const meta = ROSTER_PRESET_LABELS[p];

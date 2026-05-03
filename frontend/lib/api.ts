@@ -8,7 +8,7 @@ export const API_BASE =
  * server-side roster expander when the client sends `agentCount` instead
  * of an explicit `agents[]` list.
  */
-export type RosterPreset = "luna" | "crv" | "balanced";
+export type RosterPreset = "luna" | "crv" | "balanced" | "stress" | "lockup_resilience";
 
 export interface CreateSimBody {
   config: unknown;
@@ -23,6 +23,12 @@ export interface CreateSimBody {
   agentCount?: number;
   /** Archetype mix used by the expander. */
   rosterPreset?: RosterPreset;
+  extractionMeta?: {
+    protocolName?: string;
+    protocolKind?: string;
+    tokenSymbol?: string;
+    quoteSymbol?: string;
+  };
   tickConfig: { intervalMs: number; maxTicks: number };
   onChain?: boolean;
 }

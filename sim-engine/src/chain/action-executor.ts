@@ -12,6 +12,9 @@ import {
   deriveVoteReceipt,
   deriveMintAuthority,
   deriveTokenomicsConfig,
+  baseAtaAddress,
+  quoteAtaAddress,
+  baseMintAddress,
   type Deployment,
   type AgentWalletEntry,
   type VestingEntry,
@@ -53,8 +56,7 @@ export interface ChainClaimVestedResult {
 }
 
 /**
- * Executes real on-chain swaps against the deployed AMM.
- * Stake/unstake remain in-memory in StateManager (no on-chain staking program in Phase 1).
+ * Executes real on-chain swaps/staking/governance against deployed programs.
  */
 export class ChainExecutor {
   private deployment: Deployment;
@@ -86,7 +88,7 @@ export class ChainExecutor {
   /**
    * Convert a UI-amount float into atomic u64 (BN). Goes through a
    * fixed-point string to avoid Number-precision loss on large values:
-   * with decimals=9, any amount > ~9 LUNA × 10^6 (i.e. > 9M tokens) overflows
+   * with decimals=9, any amount > ~9M base tokens overflows
    * Number.MAX_SAFE_INTEGER under the naive `amount * 10**decimals` form,
    * causing BN.js to throw "Assertion failed" (its internal numeric-range
    * check). Uses the same toFixed→string→BN pattern as deploy-from-config.ts.
@@ -116,7 +118,7 @@ export class ChainExecutor {
     return Number(whole) + Number(remainder) / Number(scale);
   }
 
-  /** Read pool reserves and derive current price (UST per LUNA). */
+  /** Read pool reserves and derive current price (quote per base). */
   async getPrice(): Promise<{ price: number; reserveLuna: number; reserveUst: number }> {
     const vaultLuna = this.deployment.pool.aIsLuna
       ? new PublicKey(this.deployment.pool.vaultA)
@@ -137,8 +139,8 @@ export class ChainExecutor {
 
   /**
    * Execute a swap as the given agent.
-   * direction: 'sell' = LUNA → UST, 'buy' = UST → LUNA.
-   * amount is in UI units of the input token (LUNA for sell, UST for buy).
+   * direction: 'sell' = base → quote, 'buy' = quote → base.
+   * amount is in UI units of the input token.
    */
   async swap(
     agentId: string,
@@ -156,12 +158,11 @@ export class ChainExecutor {
     const vaultA = new PublicKey(dep.pool.vaultA);
     const vaultB = new PublicKey(dep.pool.vaultB);
 
-    const lunaAta = new PublicKey(wallet.entry.lunaAta);
-    const ustAta = new PublicKey(wallet.entry.ustAta);
+    const lunaAta = new PublicKey(baseAtaAddress(wallet.entry));
+    const ustAta = new PublicKey(quoteAtaAddress(wallet.entry));
 
     // direction → a_to_b mapping
-    // sell: LUNA → UST. a_to_b = aIsLuna ? true : false
-    // buy:  UST → LUNA. a_to_b = aIsLuna ? false : true
+    // sell: base → quote. buy: quote → base.
     const aToB = direction === "sell" ? dep.pool.aIsLuna : !dep.pool.aIsLuna;
     const swapperTokenIn = direction === "sell" ? lunaAta : ustAta;
     const swapperTokenOut = direction === "sell" ? ustAta : lunaAta;
@@ -207,17 +208,21 @@ export class ChainExecutor {
     };
   }
 
-  /** Read an agent's LUNA + UST balances from chain. */
-  async getAgentBalances(agentId: string): Promise<{ luna: number; ust: number }> {
+  /** Read an agent's base + quote balances from chain. */
+  async getAgentBalances(agentId: string): Promise<{ base: number; quote: number; luna: number; ust: number }> {
     const wallet = this.agentWallets.get(agentId);
     if (!wallet) throw new Error(`No on-chain wallet for agent ${agentId}`);
     const [lunaAcc, ustAcc] = await Promise.all([
-      getAccount(this.provider.connection, new PublicKey(wallet.entry.lunaAta)),
-      getAccount(this.provider.connection, new PublicKey(wallet.entry.ustAta)),
+      getAccount(this.provider.connection, new PublicKey(baseAtaAddress(wallet.entry))),
+      getAccount(this.provider.connection, new PublicKey(quoteAtaAddress(wallet.entry))),
     ]);
+    const base = this.fromAtoms(lunaAcc.amount);
+    const quote = this.fromAtoms(ustAcc.amount);
     return {
-      luna: this.fromAtoms(lunaAcc.amount),
-      ust: this.fromAtoms(ustAcc.amount),
+      base,
+      quote,
+      luna: base,
+      ust: quote,
     };
   }
 
@@ -294,7 +299,7 @@ export class ChainExecutor {
     const pool = new PublicKey(st.pool);
     const stakeVault = new PublicKey(st.stakeVault);
     const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
-    const userAta = new PublicKey(wallet.entry.lunaAta);
+    const userAta = new PublicKey(baseAtaAddress(wallet.entry));
 
     const amountAtoms = this.toAtoms(amount);
     const program = getStakingProgram(this.provider);
@@ -351,7 +356,7 @@ export class ChainExecutor {
     const poolAuthority = new PublicKey(st.poolAuthority);
     const stakeVault = new PublicKey(st.stakeVault);
     const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
-    const userAta = new PublicKey(wallet.entry.lunaAta);
+    const userAta = new PublicKey(baseAtaAddress(wallet.entry));
 
     const program = getStakingProgram(this.provider);
     const txSignature = await program.methods
@@ -382,7 +387,7 @@ export class ChainExecutor {
     const poolAuthority = new PublicKey(st.poolAuthority);
     const rewardVault = new PublicKey(st.rewardVault);
     const [stakeAccount] = deriveStakeAccount(pool, wallet.keypair.publicKey);
-    const userAta = new PublicKey(wallet.entry.lunaAta);
+    const userAta = new PublicKey(baseAtaAddress(wallet.entry));
 
     const program = getStakingProgram(this.provider);
     const txSignature = await program.methods
@@ -436,7 +441,7 @@ export class ChainExecutor {
   }
 
   /**
-   * Top up the staking reward vault from the deployer's LUNA ATA. Used by the
+   * Top up the staking reward vault from the deployer's base-token ATA. Used by the
    * engine to schedule per-tick emissions: `amount = total_staked × rewardEmissionRate`.
    * No-op when `amount <= 0` (e.g. nothing staked yet, or emission rate = 0).
    * Returns null when staking isn't configured at all.
@@ -450,12 +455,12 @@ export class ChainExecutor {
     const payer = (this.provider.wallet as { payer?: Keypair }).payer;
     if (!payer) throw new Error("provider.wallet.payer is required for fundRewardVault");
 
-    // The deployer's LUNA ATA holds the seed allocation. We don't track its
-    // address in the manifest (it's the deployer's pubkey + lunaMint), so
+    // The deployer's base-token ATA holds the seed allocation. We don't track its
+    // address in the manifest (it's the deployer's pubkey + base mint), so
     // derive it via the standard SPL ATA seed.
     const { getAssociatedTokenAddress } = await import("@solana/spl-token");
     const funderAta = await getAssociatedTokenAddress(
-      new PublicKey(this.deployment.mints.luna),
+      new PublicKey(baseMintAddress(this.deployment)),
       payer.publicKey,
     );
 
@@ -498,7 +503,7 @@ export class ChainExecutor {
     if (vesting.length === 0) return { claims: [] };
 
     const program = getTokenMintProgram(this.provider);
-    const lunaMint = new PublicKey(this.deployment.mints.luna);
+    const lunaMint = new PublicKey(baseMintAddress(this.deployment));
     const [mintAuthority] = deriveMintAuthority(lunaMint);
     const [tokenomicsConfig] = deriveTokenomicsConfig(lunaMint);
 

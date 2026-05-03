@@ -1,12 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import { PublicKey } from "@solana/web3.js";
 import {
+  baseAtaAddress,
+  baseMintAddress,
+  baseSymbol,
   deriveStakingPool,
   deriveStakeVault,
   deriveStakeAccount,
   deriveGovernance,
   deriveProposal,
   deriveVoteReceipt,
+  quoteAtaAddress,
+  quoteMintAddress,
+  quoteSymbol,
 } from "./sdk";
 import {
   STAKING_PROGRAM_ID,
@@ -49,6 +55,33 @@ describe("staking PDA derivations", () => {
     // Program IDs aren't returned by findProgramAddress, but the derivation
     // uses STAKING_PROGRAM_ID as the owning program.
     expect(STAKING_PROGRAM_ID.toBase58()).toBe("2ecsTtNNuZUDSs19BfUx2yZ4n3WHTKKR2XfDWz6PAmdY");
+  });
+});
+
+describe("neutral deployment manifest helpers", () => {
+  it("prefers base/quote fields and falls back to legacy luna/ust aliases", () => {
+    const legacy = {
+      mints: { luna: "legacyBase", ust: "legacyQuote" },
+      agents: [{ lunaAta: "legacyBaseAta", ustAta: "legacyQuoteAta" }],
+    } as any;
+    expect(baseMintAddress(legacy)).toBe("legacyBase");
+    expect(quoteMintAddress(legacy)).toBe("legacyQuote");
+    expect(baseAtaAddress(legacy.agents[0])).toBe("legacyBaseAta");
+    expect(quoteAtaAddress(legacy.agents[0])).toBe("legacyQuoteAta");
+    expect(baseSymbol(legacy)).toBe("TOKEN");
+    expect(quoteSymbol(legacy)).toBe("USDC");
+
+    const neutral = {
+      mints: { base: "base", quote: "quote", luna: "legacyBase", ust: "legacyQuote" },
+      symbols: { base: "ABC", quote: "USD" },
+      agents: [{ baseAta: "baseAta", quoteAta: "quoteAta", lunaAta: "legacyBaseAta", ustAta: "legacyQuoteAta" }],
+    } as any;
+    expect(baseMintAddress(neutral)).toBe("base");
+    expect(quoteMintAddress(neutral)).toBe("quote");
+    expect(baseAtaAddress(neutral.agents[0])).toBe("baseAta");
+    expect(quoteAtaAddress(neutral.agents[0])).toBe("quoteAta");
+    expect(baseSymbol(neutral)).toBe("ABC");
+    expect(quoteSymbol(neutral)).toBe("USD");
   });
 });
 

@@ -156,15 +156,18 @@ export class StateManager {
    * outcome rather than success.
    */
   unstake(agentId: string, amount: number): number {
-    if (this.config.veToken?.enabled) {
-      const unlockAt = this.lockUntilTick.get(agentId) ?? 0;
-      if (this.currentTick < unlockAt) return 0;
-    }
+    if (!this.canUnstake(agentId)) return 0;
     const current = this.stakingBalances.get(agentId) || 0;
     const actual = Math.min(amount, current);
     this.stakingBalances.set(agentId, current - actual);
     this.totalStaked -= actual;
     return actual;
+  }
+
+  canUnstake(agentId: string): boolean {
+    if (!this.config.veToken?.enabled) return true;
+    const unlockAt = this.lockUntilTick.get(agentId) ?? 0;
+    return this.currentTick >= unlockAt;
   }
 
   /**
@@ -233,7 +236,7 @@ export class StateManager {
   }
 
   /**
-   * Increase total supply (for LUNA mint-from-burn hyperinflation).
+   * Increase base-token supply (for reflexive mint-from-burn mechanics).
    */
   inflateSupply(amount: number): void {
     this.totalSupply += amount;

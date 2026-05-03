@@ -10,6 +10,7 @@ import { buildLLMClient } from "../llm/factory";
 import { draftScenario } from "../scenarios/generator";
 import { normalizeConfig } from "../scenarios/normalize";
 import { perRunDeploymentPath } from "../chain/sdk";
+import { buildDeploymentPlan } from "../chain/deployment-plan";
 import { expandRoster, type RosterPreset } from "../agents/roster";
 import { MAX_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
 
@@ -55,6 +56,12 @@ interface CreateSimBody {
   agentCount?: number;
   /** Archetype mix used by the expander. Defaults to "luna". */
   rosterPreset?: RosterPreset;
+  extractionMeta?: {
+    protocolName?: string;
+    protocolKind?: string;
+    tokenSymbol?: string;
+    quoteSymbol?: string;
+  };
   tickConfig: TickConfig;
   onChain?: boolean;
 }
@@ -72,7 +79,18 @@ async function handleCreate(req: Request): Promise<Response> {
   // of 91 last run.
   let normalizedConfig: SimulationConfig;
   try {
-    normalizedConfig = normalizeConfig(body.config);
+    const rawConfig =
+      body.config && typeof body.config === "object"
+        ? { ...(body.config as unknown as Record<string, unknown>) }
+        : body.config;
+    if (rawConfig && typeof rawConfig === "object" && body.extractionMeta) {
+      const rc = rawConfig as Record<string, unknown>;
+      rc.metadata = {
+        ...(rc.metadata && typeof rc.metadata === "object" ? rc.metadata as Record<string, unknown> : {}),
+        ...body.extractionMeta,
+      };
+    }
+    normalizedConfig = normalizeConfig(rawConfig);
   } catch (e) {
     return json({ error: `config normalization failed: ${(e as Error).message}` }, { status: 400 });
   }
@@ -106,6 +124,18 @@ async function handleCreate(req: Request): Promise<Response> {
     if (resolvedAgents.length === 0) {
       return json({ error: "roster expander produced 0 agents — bad ratios?" }, { status: 500 });
     }
+  }
+
+  const deploymentPlan = buildDeploymentPlan({
+    config: normalizedConfig,
+    agents: resolvedAgents,
+    onChain: !!body.onChain,
+  });
+  if (body.onChain && deploymentPlan.blockers.length > 0) {
+    return json(
+      { error: `deployment preflight failed: ${deploymentPlan.blockers.join("; ")}`, deploymentPlan },
+      { status: 400 },
+    );
   }
 
   // Persist the resolved roster + normalized config, not the request body, so
@@ -150,7 +180,7 @@ async function handleCreate(req: Request): Promise<Response> {
   }
 
   return json(
-    { simId, status: "starting", agentCount: resolvedAgents.length },
+    { simId, status: "starting", agentCount: resolvedAgents.length, deploymentPlan },
     { status: 201, headers: corsHeaders() },
   );
 }

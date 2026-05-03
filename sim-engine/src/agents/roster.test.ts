@@ -31,6 +31,20 @@ describe("expandRoster", () => {
     expect(counts.PANIC ?? 0).toBe(0);
   });
 
+  test("custom default uses generic balanced prompts, not LUNA fixture prompts", () => {
+    const roster = expandRoster({ count: 20, simId: "generic-default" });
+    expect(roster.length).toBe(20);
+    expect(roster.some((p) => /peg cracks|Anchor Protocol|reserve depleted/i.test(p.systemPrompt))).toBe(false);
+    expect(roster.some((p) => /protocol incentives|role-specific goal/i.test(p.systemPrompt))).toBe(true);
+  });
+
+  test("neutral production profiles are available without fixture prompts", () => {
+    const stress = expandRoster({ count: 20, simId: "stress", preset: "stress" });
+    const lockup = expandRoster({ count: 20, simId: "lockup", preset: "lockup_resilience" });
+    expect(stress.some((p) => /peg cracks|Anchor Protocol|reserve depleted/i.test(p.systemPrompt))).toBe(false);
+    expect(lockup.some((p) => /peg cracks|Anchor Protocol|reserve depleted/i.test(p.systemPrompt))).toBe(false);
+  });
+
   test("same simId → same roster (deterministic)", () => {
     const a = expandRoster({ count: 50, simId: "deadbeef", preset: "luna" });
     const b = expandRoster({ count: 50, simId: "deadbeef", preset: "luna" });

@@ -8,9 +8,9 @@
  * behavior space narrow + debuggable while still letting users dial roster
  * size to match their cost/runtime budget.
  *
- * Why preset-shaped (`luna` / `crv` / `balanced`): different stress-tests
- * need different ratios. LUNA wants more farmers + degens to drive the
- * cascade; CRV wants more long-term holders to model lock-up resilience.
+ * Why preset-shaped: different stress-tests need different ratios. Named
+ * fixture aliases (`luna`, `crv`) stay for demo compatibility; custom runs
+ * should prefer neutral profiles (`balanced`, `stress`, `lockup_resilience`).
  *
  * Power users can still pass an explicit `agents: AgentPersona[]` to
  * `POST /api/sim` and skip the expander entirely.
@@ -23,7 +23,7 @@ import {
   CRV_PERSONAS,
 } from "./personas";
 
-export type RosterPreset = "luna" | "crv" | "balanced";
+export type RosterPreset = "luna" | "crv" | "balanced" | "stress" | "lockup_resilience";
 
 /**
  * Ratios are normalized — the expander rounds + redistributes to hit `count`
@@ -78,6 +78,33 @@ const RATIOS: Record<RosterPreset, Record<string, number>> = {
     INSIDER: 1,
     PANIC: 1,
   },
+  stress: {
+    WHALE: 4,
+    GOV: 3,
+    SYBIL: 2,
+    MEV: 2,
+    FARMER: 5,
+    DEGEN: 5,
+    HOLDER: 2,
+    ARB: 3,
+    TREASURY: 1,
+    LP: 2,
+    ANALYST: 1,
+    INSIDER: 1,
+    PANIC: 2,
+  },
+  lockup_resilience: {
+    WHALE: 3,
+    GOV: 2,
+    HOLDER: 8,
+    FARMER: 6,
+    ARB: 2,
+    TREASURY: 1,
+    DEGEN: 2,
+    LP: 2,
+    ANALYST: 1,
+    INSIDER: 1,
+  },
 };
 
 /** Mulberry32 — deterministic, fast, fine for parameter perturbation. */
@@ -116,10 +143,14 @@ interface ExpandRosterArgs {
  */
 export function expandRoster(args: ExpandRosterArgs): AgentPersona[] {
   const { count, simId } = args;
-  const preset: RosterPreset = args.preset ?? "luna";
+  const preset: RosterPreset = args.preset ?? "balanced";
   if (count <= 0) throw new Error(`expandRoster: count must be > 0, got ${count}`);
 
-  const archetypePool = preset === "crv" ? CRV_PERSONAS : ALL_PHASE2_PERSONAS;
+  const archetypePool = preset === "luna"
+    ? ALL_PHASE2_PERSONAS
+    : preset === "crv"
+      ? CRV_PERSONAS
+      : GENERIC_PERSONAS;
   const archetypesByPrefix = groupByPrefix(archetypePool);
   const ratios = RATIOS[preset];
 
@@ -202,4 +233,60 @@ function cloneWithPerturbation(
 
 function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
+}
+
+const GENERIC_PERSONAS: AgentPersona[] = [
+  generic("WHALE_01", "whale", "Capital Allocator", "reasoning", 0.35, { token: 20_000_000, usdc: 8_000_000, stakedFraction: 0.25 },
+    "You manage a large position in the protocol token. Optimize exit value, liquidity, and governance influence using only the live market, staking, peg, and governance data in the prompt."),
+  generic("GOV_01", "governance_attacker", "Governance Strategist", "reasoning", 0.7, { token: 8_000_000, usdc: 3_000_000, stakedFraction: 0.55 },
+    "You seek governance advantage. Accumulate voting power, propose parameter changes when useful, and abandon the strategy if market stress makes voting power uneconomic."),
+  generic("SYBIL_01", "sybil", "Distributed Wallet Cluster", "standard", 0.6, { token: 5_000_000, usdc: 1_500_000, stakedFraction: 0.25 },
+    "You coordinate many small wallets. Amplify profitable market signals and exploit incentive designs that reward fragmented ownership."),
+  generic("MEV_01", "mev_bot", "Flow Extractor", "reasoning", 0.55, { token: 3_000_000, usdc: 6_000_000, stakedFraction: 0 },
+    "You trade around large visible flow. Front-run trends, fade overextensions, and avoid long-term exposure unless the immediate expected value is positive."),
+  generic("FARMER_01", "yield_farmer", "Yield Optimizer", "fast", 0.5, { token: 7_000_000, usdc: 1_000_000, stakedFraction: 0.75 },
+    "You chase risk-adjusted yield. Stake when APY compensates for lock, penalty, and price risk; unstake or stop compounding when yield looks subsidized or unstable."),
+  generic("DEGEN_01", "retail_degen", "Momentum Trader", "fast", 0.7, { token: 2_500_000, usdc: 700_000, stakedFraction: 0.15 },
+    "You react to price momentum and crowd behavior. Buy strength, sell sharp drawdowns, and follow visible social proof from other agents."),
+  generic("HOLDER_01", "long_term_holder", "Long Horizon Holder", "standard", 0.2, { token: 6_000_000, usdc: 700_000, stakedFraction: 0.7 },
+    "You prefer protocol survival over short-term trading. Stake core exposure, vote conservatively, and only reduce risk under severe structural deterioration."),
+  generic("ARB_01", "arbitrageur", "Relative Value Trader", "standard", 0.35, { token: 2_000_000, usdc: 5_000_000, stakedFraction: 0 },
+    "You exploit price dislocations against peg, initial price, and recent trend. Trade mechanically and stay liquid."),
+  generic("TREASURY_01", "treasury", "Protocol Treasury", "standard", 0.15, { token: 4_000_000, usdc: 18_000_000, stakedFraction: 0.35 },
+    "You defend protocol stability with reserves. Buy during justified stress, avoid wasteful defense when reserves are compromised, and never chase momentum."),
+  generic("LP_01", "lp_provider", "Liquidity Provider", "standard", 0.35, { token: 4_000_000, usdc: 4_000_000, stakedFraction: 0.15 },
+    "You balance fee income against impermanent loss and depeg risk. Reduce exposure when volatility overwhelms expected fees."),
+  generic("ANALYST_01", "analyst", "Market Analyst", "reasoning", 0.3, { token: 1_500_000, usdc: 500_000, stakedFraction: 0.2 },
+    "You publish visible market signals through your actions. Size trades for information impact when the protocol shows stress."),
+  generic("INSIDER_01", "insider", "Informed Trader", "reasoning", 0.6, { token: 2_500_000, usdc: 3_000_000, stakedFraction: 0.25 },
+    "You exploit early knowledge of treasury and governance behavior. Trade before public signals when expected value is clear."),
+  generic("PANIC_01", "panic_seller", "Reactive Seller", "fast", 0.9, { token: 1_500_000, usdc: 300_000, stakedFraction: 0.25 },
+    "You are highly loss-averse. Sell or unstake on negative price, peg, reserve, or large-trade signals; hold only when the market is quiet."),
+];
+
+function generic(
+  id: AgentPersona["id"],
+  type: AgentPersona["type"],
+  name: string,
+  complexity: NonNullable<AgentPersona["complexity"]>,
+  riskTolerance: number,
+  initialCapital: AgentPersona["initialCapital"],
+  behavior: string,
+): AgentPersona {
+  return {
+    id,
+    type,
+    name,
+    complexity,
+    riskTolerance,
+    initialCapital,
+    systemPrompt: `${behavior}
+
+NUMERIC DECISION TRIGGERS:
+- If token price falls more than 10% over the recent window, reduce risk unless your role explicitly stabilizes the system.
+- If staking APY is high relative to visible protocol health, treat it as potentially subsidized and reassess.
+- If a peg, reserve, lock, penalty, or governance proposal is present in the market state, incorporate it directly.
+- Otherwise choose the action that best advances your role-specific goal.`,
+    goals: [name, "Exploit or defend protocol incentives", "React to extracted mechanism data"],
+  };
 }

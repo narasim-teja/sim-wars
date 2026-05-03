@@ -8,11 +8,11 @@
  * and deploys everything that scenario needs to run live on Solana:
  *
  *   - Token mint (parameterized totalSupply, allocations) via the token_mint program
- *   - Mock UST mint
- *   - AMM pool (LUNA/UST) seeded with the configured initialLiquidity at initialPrice
+ *   - Mock quote-token mint
+ *   - AMM pool (base/quote) seeded with the configured initialLiquidity at initialPrice
  *   - Optional staking pool (when --with-staking is passed AND staking config is non-trivial)
  *   - Optional governance (when --with-governance is passed AND a staking pool was deployed)
- *   - Per-agent keypair + ATA + funding (LUNA + UST per persona's initialCapital)
+ *   - Per-agent keypair + ATA + funding (base + quote per persona's initialCapital)
  *
  * Output: writes the deployment manifest to either:
  *   - sim-engine/.local/runs/<simId>/deployment.json   (when --sim-id is passed)
@@ -55,6 +55,7 @@ import {
   STAKING_PROGRAM_ID,
   GOVERNANCE_PROGRAM_ID,
 } from "../src/chain/connection";
+import { buildDeploymentPlan } from "../src/chain/deployment-plan";
 import {
   getTokenMintProgram,
   getAmmDexProgram,
@@ -243,6 +244,19 @@ async function main() {
     votingPeriodTicks: config.governance?.votingPeriodTicks ?? 5,
     timelockTicks: config.governance?.timelockTicks ?? 0,
   };
+  const deploymentPlan = buildDeploymentPlan({
+    config,
+    agents,
+    onChain: true,
+    withStaking: args.withStaking,
+    withGovernance: args.withGovernance,
+  });
+  if (deploymentPlan.blockers.length > 0) {
+    throw new Error(`[deploy] preflight failed: ${deploymentPlan.blockers.join("; ")}`);
+  }
+  for (const warning of deploymentPlan.warnings) {
+    console.warn(`[deploy] warning: ${warning}`);
+  }
 
   const provider = getProvider();
   const payer = (provider.wallet as any).payer as Keypair;
@@ -261,9 +275,9 @@ async function main() {
     );
   }
 
-  // ─── 1. LUNA mint via token_mint program ───────────────────────────────
+  // ─── 1. Base token mint via token_mint program ─────────────────────────
   const tokenMint = getTokenMintProgram(provider);
-  console.log("[deploy] init LUNA mint…");
+  console.log(`[deploy] init ${deploymentPlan.symbols.base} mint…`);
   const lunaMintKp = Keypair.generate();
   const lunaMint = lunaMintKp.publicKey;
   const [mintAuthority] = deriveMintAuthority(lunaMint);
@@ -350,7 +364,7 @@ async function main() {
       .rpc();
   }
 
-  // ─── 3. Mint deployer's LUNA pool seed ─────────────────────────────────
+  // ─── 3. Mint deployer's base-token pool seed ───────────────────────────
   // Pool seed + agent funding must come from a LIQUID (unvested) allocation.
   // Picking a vested bucket here would either silently bypass the lockup or
   // (correctly) exceed `allocated` once we also create a vesting account.
@@ -380,7 +394,7 @@ async function main() {
   const rewardSeedTarget = args.withStaking
     ? Math.max(1_000_000, agentTokenSum * 0.10)
     : 0;
-  // Inflation budget: stays in the deployer's LUNA ATA so per-tick
+  // Inflation budget: stays in the deployer's base-token ATA so per-tick
   // `fundRewardVault` calls have source funds to pull from. Without this the
   // deployer ATA drains during deploy (AMM seed + reward seed + agent
   // funding consume everything minted) and every per-tick emission fails
@@ -468,8 +482,8 @@ async function main() {
     };
   });
 
-  // ─── 4. Mock UST mint ─────────────────────────────────────────────────
-  console.log("[deploy] create UST mint…");
+  // ─── 4. Mock quote-token mint ──────────────────────────────────────────
+  console.log(`[deploy] create ${deploymentPlan.symbols.quote} mint…`);
   const ustMint = await createMint(provider.connection, payer, payer.publicKey, null, decimals);
   const deployerUstAta = await getOrCreateAssociatedTokenAccount(
     provider.connection, payer, ustMint, payer.publicKey,
@@ -566,7 +580,7 @@ async function main() {
       })
       .rpc();
 
-    // Seed the reward vault from the deployer's LUNA ATA so claim_rewards has
+    // Seed the reward vault from the deployer's base-token ATA so claim_rewards has
     // something to pay out. The amount is `rewardSeedTarget` (computed up
     // front and already added to lunaToMintUi), so the transfer cannot starve
     // the per-agent funding loop that runs after this.
@@ -664,6 +678,8 @@ async function main() {
       agentId: persona.id,
       pubkey: keypair.publicKey.toBase58(),
       keypairPath,
+      baseAta: lunaAta.address.toBase58(),
+      quoteAta: ustAta.address.toBase58(),
       lunaAta: lunaAta.address.toBase58(),
       ustAta: ustAta.address.toBase58(),
     };
@@ -679,7 +695,13 @@ async function main() {
       ...(args.withStaking ? { staking: STAKING_PROGRAM_ID.toBase58() } : {}),
       ...(args.withGovernance ? { governance: GOVERNANCE_PROGRAM_ID.toBase58() } : {}),
     },
-    mints: { luna: lunaMint.toBase58(), ust: ustMint.toBase58() },
+    mints: {
+      base: lunaMint.toBase58(),
+      quote: ustMint.toBase58(),
+      luna: lunaMint.toBase58(),
+      ust: ustMint.toBase58(),
+    },
+    symbols: deploymentPlan.symbols,
     pool: {
       address: pool.toBase58(),
       authority: poolAuthority.toBase58(),

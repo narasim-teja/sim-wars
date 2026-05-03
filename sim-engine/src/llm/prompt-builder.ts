@@ -36,7 +36,7 @@ export function buildAgentPrompt(
       .map((a) => `${a.agentId}: ${a.action} ${a.amount ?? ""}`)
       .join(", ") || "quiet";
 
-  // Stablecoin-specific info (for LUNA backtest)
+  // Stablecoin mechanism info (algorithmic / reserve-backed peg models)
   let stablecoinSection = "";
   if (sim.stablecoinSupply !== undefined && sim.reserveBalance !== undefined) {
     const initialReserve = sim.initialReserveBalance ?? sim.reserveBalance;

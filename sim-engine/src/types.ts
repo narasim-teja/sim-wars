@@ -3,6 +3,16 @@
 // ============================================================
 
 export interface SimulationConfig {
+  metadata?: {
+    /** Human protocol name extracted from source docs, e.g. "Acme DAO". */
+    protocolName?: string;
+    /** Base token symbol under test. Defaults to TOKEN when unknown. */
+    tokenSymbol?: string;
+    /** Quote / settlement token symbol. Defaults to USDC when unknown. */
+    quoteSymbol?: string;
+    /** Extraction-level protocol classification. */
+    protocolKind?: string;
+  };
   token: {
     totalSupply: number;
     decimals: number;
@@ -53,6 +63,27 @@ export interface SimulationConfig {
     targetPeg: number;
     mintBurnRatio: number;
     reserveAmount: number;
+    /**
+     * Engine-side risk model for peg / reserve mechanics. These are neutral
+     * protocol parameters; LUNA/UST is one fixture that fills them, not a
+     * special backend code path.
+     */
+    riskModel?: {
+      /** Fraction of gross yield paid by organic borrower/protocol revenue. */
+      borrowerRevenueRatio?: number;
+      /** Peg threshold below which redemptions/mint-burn pressure starts. */
+      redemptionThreshold?: number;
+      /** Max fraction of stablecoin supply redeemed per tick. */
+      maxRedemptionPercentPerTick?: number;
+      /** Multiplier from peg deviation to redemption percentage. */
+      redemptionRateMultiplier?: number;
+      /** Pressure cap contributed by recent sell/unstake volume. */
+      sellPressureCoefficient?: number;
+      /** Pressure cap contributed by reserve depletion. */
+      reservePressureCoefficient?: number;
+      /** Pressure cap contributed by negative price momentum. */
+      momentumPressureCoefficient?: number;
+    };
   };
   /**
    * veToken-style locking. When `enabled`, stake actions take a lock duration
@@ -173,7 +204,7 @@ export interface SimulationState {
   coordinationEdges: { a: string; b: string; score: number }[];
   poolReserveA: number;
   poolReserveB: number;
-  // LUNA-specific
+  // Stablecoin mechanism telemetry
   stablecoinSupply?: number;
   reserveBalance?: number;
   pegPrice?: number;

@@ -16,6 +16,7 @@ GOAL: ${goal}
 Output JSON with two top-level keys, 'config' and 'rationale'. 'config' must match this shape exactly:
 
 {
+  "metadata":   { "protocolName": string, "tokenSymbol": string, "quoteSymbol": string, "protocolKind": string },
   "token":      { "totalSupply": number, "decimals": 6, "allocations": [{ "name": string, "percent": number, "vestingMonths": number }] },
   "staking":    { "baseAPY": number, "maxAPY": number, "lockPeriodTicks": number, "unstakePenaltyPercent": number },
   "amm":        { "initialLiquidity": number, "initialPrice": number, "feeTier": number },

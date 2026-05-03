@@ -30,7 +30,14 @@ import type {
   ChainActivity,
 } from "./types";
 import { existsSync, readFileSync } from "node:fs";
-import { perRunDeploymentPath, type Deployment } from "../chain/sdk";
+import {
+  baseMintAddress,
+  baseSymbol,
+  perRunDeploymentPath,
+  quoteMintAddress,
+  quoteSymbol,
+  type Deployment,
+} from "../chain/sdk";
 
 export interface GenerateReportOptions {
   simId: string;
@@ -215,8 +222,8 @@ function computeChainActivity(simId: string, db: SimDatabase): ChainActivity | n
   if (dep.programs.governance) programs.push({ name: "governance", address: dep.programs.governance });
 
   const mints = [
-    { name: "LUNA", address: dep.mints.luna },
-    { name: "UST", address: dep.mints.ust },
+    { name: baseSymbol(dep), address: baseMintAddress(dep) },
+    { name: quoteSymbol(dep), address: quoteMintAddress(dep) },
   ];
 
   return {

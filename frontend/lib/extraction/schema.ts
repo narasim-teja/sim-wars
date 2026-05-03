@@ -66,6 +66,17 @@ const Stablecoin = z
     targetPeg: z.number().positive().default(1),
     mintBurnRatio: z.number().positive().default(1),
     reserveAmount: z.number().min(0).default(0),
+    riskModel: z
+      .object({
+        borrowerRevenueRatio: z.number().min(0).max(1).default(0.15),
+        redemptionThreshold: z.number().positive().default(0.98),
+        maxRedemptionPercentPerTick: z.number().min(0).max(1).default(0.2),
+        redemptionRateMultiplier: z.number().min(0).default(0.5),
+        sellPressureCoefficient: z.number().min(0).default(0.4),
+        reservePressureCoefficient: z.number().min(0).default(0.3),
+        momentumPressureCoefficient: z.number().min(0).default(0.3),
+      })
+      .optional(),
   })
   .optional();
 
@@ -79,6 +90,14 @@ const VeToken = z
   .optional();
 
 export const SimulationConfigSchema = z.object({
+  metadata: z
+    .object({
+      protocolName: z.string().optional(),
+      tokenSymbol: z.string().optional(),
+      quoteSymbol: z.string().optional(),
+      protocolKind: z.string().optional(),
+    })
+    .optional(),
   token: Token.default({} as never),
   staking: Staking.default({} as never),
   amm: Amm.default({} as never),
@@ -155,6 +174,12 @@ export function parseExtractedConfig(raw: unknown): {
 } {
   const extractedFields = extractedFieldPaths(raw);
   const config = SimulationConfigSchema.parse(raw ?? {});
+  if (config.stablecoin?.riskModel) {
+    config.stablecoin.riskModel.redemptionThreshold = Math.min(
+      config.stablecoin.targetPeg,
+      config.stablecoin.riskModel.redemptionThreshold,
+    );
+  }
   // Post-parse normalization: cliffMonths must not exceed vestingMonths.
   // If the LLM returns a 12-month cliff with 0 vesting (a common slip),
   // we clamp the cliff to 0 so downstream tick math doesn't divide by zero.

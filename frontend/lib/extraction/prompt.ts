@@ -17,6 +17,12 @@ Return ONLY a JSON object matching this shape (every field is OPTIONAL — only 
 
 {
   "config": {
+    "metadata": {
+      "protocolName": "<string, protocol/project name>",
+      "tokenSymbol": "<string, base token under test, e.g. LUNA, CRV, JTO>",
+      "quoteSymbol": "<string, quote/reserve token for the sim, usually USDC or USD>",
+      "protocolKind": "<one of: stablecoin_algo | liquid_staking | lending | amm_dex | governance_token | veToken | memecoin | other>"
+    },
     "token": {
       "totalSupply": <number, total minted supply (not circulating)>,
       "decimals": <int, default 6 if unstated>,
@@ -52,7 +58,16 @@ Return ONLY a JSON object matching this shape (every field is OPTIONAL — only 
       "enabled": <true ONLY if the protocol has an algorithmic / collateralized stablecoin component>,
       "targetPeg": <number, usually 1 for USD>,
       "mintBurnRatio": <number, e.g. 1 means 1 USD of LUNA burned per 1 UST minted>,
-      "reserveAmount": <number, USD value of backing reserve at TGE>
+      "reserveAmount": <number, USD value of backing reserve at TGE>,
+      "riskModel": {
+        "borrowerRevenueRatio": <0-1, fraction of paid yield covered by real protocol/borrower revenue; Terra-like subsidy ≈ 0.15>,
+        "redemptionThreshold": <peg price where redemptions accelerate; default 0.98 for USD pegs>,
+        "maxRedemptionPercentPerTick": <0-1, max stable supply redeemed per tick; default 0.2>,
+        "redemptionRateMultiplier": <number, multiplier from peg deviation to redeemed supply; default 0.5>,
+        "sellPressureCoefficient": <number, sell/unstake pressure cap; default 0.4>,
+        "reservePressureCoefficient": <number, reserve-depletion pressure cap; default 0.3>,
+        "momentumPressureCoefficient": <number, price-momentum pressure cap; default 0.3>
+      }
     },
     "veToken": {
       "enabled": <true ONLY if the protocol uses vote-escrow / time-weighted staking. Curve veCRV, Balancer veBAL, Frax veFXS all qualify. Generic time-locked staking with no governance weight does NOT qualify — that goes in 'staking.lockPeriodTicks'>,
@@ -72,6 +87,7 @@ RULES:
 - OMIT any field you cannot ground in the source. Do not write nulls. Do not write "unknown".
 - Convert time units to ticks where 1 tick ≈ 1 day (so "7 day lock" → 7, "2 weeks" → 14).
 - Convert percentages to plain numbers (so "19.45%" → 19.45, not 0.1945).
+- Also copy protocolName/protocolKind/tokenSymbol/quoteSymbol into config.metadata when known; top-level protocolName/protocolKind are kept for UI metadata.
 - If allocations are listed but don't sum to 100, return them verbatim — do not normalize.
 - "stablecoin.enabled" should be true ONLY for protocols that mint/burn a peg-target asset (Terra UST, Frax, etc.). Lending stables on top of collateral don't count.
 - If the source is not a tokenomics document at all (e.g. a generic README, a code file, a research paper unrelated to a token), return: {"config":{},"notes":"source does not contain tokenomics","confidence":0}.

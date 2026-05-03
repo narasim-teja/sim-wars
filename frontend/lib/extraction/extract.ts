@@ -74,7 +74,20 @@ export async function extractFromSource(
     throw new Error(`model JSON did not match expected envelope: ${envelope.error.message}`);
   }
 
-  const { config, extractedFields } = parseExtractedConfig(envelope.data.config ?? {});
+  const rawConfig =
+    envelope.data.config && typeof envelope.data.config === "object"
+      ? { ...(envelope.data.config as Record<string, unknown>) }
+      : {};
+  const metadata = {
+    ...(rawConfig.metadata && typeof rawConfig.metadata === "object"
+      ? (rawConfig.metadata as Record<string, unknown>)
+      : {}),
+    ...(envelope.data.protocolName ? { protocolName: envelope.data.protocolName } : {}),
+    ...(envelope.data.protocolKind ? { protocolKind: envelope.data.protocolKind } : {}),
+  };
+  if (Object.keys(metadata).length > 0) rawConfig.metadata = metadata;
+
+  const { config, extractedFields } = parseExtractedConfig(rawConfig);
 
   return {
     config,

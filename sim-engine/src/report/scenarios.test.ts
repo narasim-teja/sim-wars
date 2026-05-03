@@ -28,8 +28,8 @@ interface MarketHints {
 /**
  * Picks an action by persona type. The LUNA path needs a self-igniting cascade
  * (whales sell early, farmers chain-react) so the death-spiral threshold trips
- * inside 25 ticks without depending on the LunaScenarioController's slow
- * reserve drain. The CRV path stays calm — long locks mean farmers can't unstake
+ * inside 25 ticks without depending on slow stablecoin reserve drain. The CRV
+ * path stays calm — long locks mean farmers can't unstake
  * even when they want to, so any panic stops at "intent to sell" instead of
  * actual sell pressure.
  *

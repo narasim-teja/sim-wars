@@ -52,6 +52,7 @@ export function normalizeConfig(raw: DeepPartial<SimulationConfig> | unknown): S
   const r = obj<DeepPartial<SimulationConfig>>(raw, {});
 
   const tokenIn = obj<NonNullable<typeof r.token>>(r.token, {});
+  const metaIn = obj<NonNullable<typeof r.metadata>>(r.metadata, {});
   const allocsIn = Array.isArray(tokenIn.allocations) && tokenIn.allocations.length > 0
     ? tokenIn.allocations
     : DEFAULT_ALLOCATIONS;
@@ -76,6 +77,12 @@ export function normalizeConfig(raw: DeepPartial<SimulationConfig> | unknown): S
   const veIn = r.veToken && obj<NonNullable<typeof r.veToken>>(r.veToken, undefined as never);
 
   const out: SimulationConfig = {
+    metadata: {
+      protocolName: str(metaIn.protocolName, ""),
+      tokenSymbol: str(metaIn.tokenSymbol, "TOKEN").toUpperCase().slice(0, 16),
+      quoteSymbol: str(metaIn.quoteSymbol, "USDC").toUpperCase().slice(0, 16),
+      protocolKind: str(metaIn.protocolKind, ""),
+    },
     token: {
       totalSupply: num(tokenIn.totalSupply, 1_000_000_000, { min: 1 }),
       decimals: num(tokenIn.decimals, 6, { min: 0, max: 18, intOnly: true }),
@@ -103,12 +110,24 @@ export function normalizeConfig(raw: DeepPartial<SimulationConfig> | unknown): S
   };
 
   if (stableIn) {
+    const riskIn = obj<NonNullable<NonNullable<typeof stableIn.riskModel>>>(stableIn.riskModel, {});
     out.stablecoin = {
       enabled: bool(stableIn.enabled, false),
       targetPeg: num(stableIn.targetPeg, 1, { min: 0.000001 }),
       mintBurnRatio: num(stableIn.mintBurnRatio, 1, { min: 0.000001 }),
       reserveAmount: num(stableIn.reserveAmount, 0, { min: 0 }),
+      riskModel: {
+        borrowerRevenueRatio: num(riskIn.borrowerRevenueRatio, 0.15, { min: 0, max: 1 }),
+        redemptionThreshold: num(riskIn.redemptionThreshold, 0.98, { min: 0.000001 }),
+        maxRedemptionPercentPerTick: num(riskIn.maxRedemptionPercentPerTick, 0.2, { min: 0, max: 1 }),
+        redemptionRateMultiplier: num(riskIn.redemptionRateMultiplier, 0.5, { min: 0 }),
+        sellPressureCoefficient: num(riskIn.sellPressureCoefficient, 0.4, { min: 0 }),
+        reservePressureCoefficient: num(riskIn.reservePressureCoefficient, 0.3, { min: 0 }),
+        momentumPressureCoefficient: num(riskIn.momentumPressureCoefficient, 0.3, { min: 0 }),
+      },
     };
+    const risk = out.stablecoin.riskModel!;
+    risk.redemptionThreshold = Math.min(out.stablecoin.targetPeg, risk.redemptionThreshold ?? 0.98);
   }
 
   if (veIn) {

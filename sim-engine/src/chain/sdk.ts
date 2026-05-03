@@ -207,7 +207,11 @@ export interface AgentWalletEntry {
   agentId: string;
   pubkey: string;
   keypairPath: string;
+  baseAta?: string;
+  quoteAta?: string;
+  /** Backward-compatible alias for baseAta from pre-neutral manifests. */
   lunaAta: string;
+  /** Backward-compatible alias for quoteAta from pre-neutral manifests. */
   ustAta: string;
 }
 
@@ -276,8 +280,16 @@ export interface Deployment {
     governance?: string;
   };
   mints: {
+    base?: string;
+    quote?: string;
+    /** Backward-compatible alias for base mint from pre-neutral manifests. */
     luna: string;
+    /** Backward-compatible alias for quote mint from pre-neutral manifests. */
     ust: string;
+  };
+  symbols?: {
+    base: string;
+    quote: string;
   };
   pool: {
     address: string;
@@ -298,6 +310,30 @@ export interface Deployment {
   vesting?: VestingEntry[];
   agents: AgentWalletEntry[];
   decimals: number;
+}
+
+export function baseMintAddress(dep: Deployment): string {
+  return dep.mints.base ?? dep.mints.luna;
+}
+
+export function quoteMintAddress(dep: Deployment): string {
+  return dep.mints.quote ?? dep.mints.ust;
+}
+
+export function baseAtaAddress(entry: AgentWalletEntry): string {
+  return entry.baseAta ?? entry.lunaAta;
+}
+
+export function quoteAtaAddress(entry: AgentWalletEntry): string {
+  return entry.quoteAta ?? entry.ustAta;
+}
+
+export function baseSymbol(dep: Deployment): string {
+  return dep.symbols?.base ?? "TOKEN";
+}
+
+export function quoteSymbol(dep: Deployment): string {
+  return dep.symbols?.quote ?? "USDC";
 }
 
 /**
