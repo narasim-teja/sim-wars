@@ -5,7 +5,7 @@ import type { AgentPersona, SimulationConfig } from "../types";
  * so users see *what* the run will and won't exercise *before* clicking Deploy.
  */
 export interface SkippedProgram {
-  program: "staking" | "governance" | "stablecoin";
+  program: "staking" | "governance";
   /** Human reason; shown verbatim in the UI tooltip / panel. */
   reason: string;
   /** Dotted config path the user can fill in to enable the program. */

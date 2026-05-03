@@ -297,7 +297,10 @@ export interface Deployment {
     vaultA: string;
     vaultB: string;
     lpMint: string;
-    aIsLuna: boolean;
+    /** True iff token-A in the pool is the base mint. New manifests write this. */
+    aIsBase?: boolean;
+    /** Legacy alias from pre-neutral manifests. Read via `poolBaseInSlotA()`. */
+    aIsLuna?: boolean;
   };
   config: {
     address: string;
@@ -334,6 +337,18 @@ export function baseSymbol(dep: Deployment): string {
 
 export function quoteSymbol(dep: Deployment): string {
   return dep.symbols?.quote ?? "USDC";
+}
+
+/**
+ * Resolve the "base mint is in pool slot A" flag from either the new
+ * `aIsBase` field or the legacy `aIsLuna` alias. Defaults to `true`
+ * (slot A holds the base mint) when neither is present, matching the
+ * deploy script's invariant.
+ */
+export function poolBaseInSlotA(dep: Deployment): boolean {
+  if (typeof dep.pool.aIsBase === "boolean") return dep.pool.aIsBase;
+  if (typeof dep.pool.aIsLuna === "boolean") return dep.pool.aIsLuna;
+  return true;
 }
 
 /**

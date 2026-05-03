@@ -15,6 +15,7 @@ import {
   baseAtaAddress,
   quoteAtaAddress,
   baseMintAddress,
+  poolBaseInSlotA,
   type Deployment,
   type AgentWalletEntry,
   type VestingEntry,
@@ -119,22 +120,23 @@ export class ChainExecutor {
   }
 
   /** Read pool reserves and derive current price (quote per base). */
-  async getPrice(): Promise<{ price: number; reserveLuna: number; reserveUst: number }> {
-    const vaultLuna = this.deployment.pool.aIsLuna
+  async getPrice(): Promise<{ price: number; reserveBase: number; reserveQuote: number }> {
+    const aIsBase = poolBaseInSlotA(this.deployment);
+    const vaultBase = aIsBase
       ? new PublicKey(this.deployment.pool.vaultA)
       : new PublicKey(this.deployment.pool.vaultB);
-    const vaultUst = this.deployment.pool.aIsLuna
+    const vaultQuote = aIsBase
       ? new PublicKey(this.deployment.pool.vaultB)
       : new PublicKey(this.deployment.pool.vaultA);
 
-    const [lunaAcc, ustAcc] = await Promise.all([
-      getAccount(this.provider.connection, vaultLuna),
-      getAccount(this.provider.connection, vaultUst),
+    const [baseAcc, quoteAcc] = await Promise.all([
+      getAccount(this.provider.connection, vaultBase),
+      getAccount(this.provider.connection, vaultQuote),
     ]);
-    const reserveLuna = this.fromAtoms(lunaAcc.amount);
-    const reserveUst = this.fromAtoms(ustAcc.amount);
-    const price = reserveLuna === 0 ? 0 : reserveUst / reserveLuna;
-    return { price, reserveLuna, reserveUst };
+    const reserveBase = this.fromAtoms(baseAcc.amount);
+    const reserveQuote = this.fromAtoms(quoteAcc.amount);
+    const price = reserveBase === 0 ? 0 : reserveQuote / reserveBase;
+    return { price, reserveBase, reserveQuote };
   }
 
   /**
@@ -158,14 +160,15 @@ export class ChainExecutor {
     const vaultA = new PublicKey(dep.pool.vaultA);
     const vaultB = new PublicKey(dep.pool.vaultB);
 
-    const lunaAta = new PublicKey(baseAtaAddress(wallet.entry));
-    const ustAta = new PublicKey(quoteAtaAddress(wallet.entry));
+    const baseAta = new PublicKey(baseAtaAddress(wallet.entry));
+    const quoteAta = new PublicKey(quoteAtaAddress(wallet.entry));
 
     // direction → a_to_b mapping
     // sell: base → quote. buy: quote → base.
-    const aToB = direction === "sell" ? dep.pool.aIsLuna : !dep.pool.aIsLuna;
-    const swapperTokenIn = direction === "sell" ? lunaAta : ustAta;
-    const swapperTokenOut = direction === "sell" ? ustAta : lunaAta;
+    const aIsBase = poolBaseInSlotA(dep);
+    const aToB = direction === "sell" ? aIsBase : !aIsBase;
+    const swapperTokenIn = direction === "sell" ? baseAta : quoteAta;
+    const swapperTokenOut = direction === "sell" ? quoteAta : baseAta;
 
     const amountIn = this.toAtoms(amount);
 

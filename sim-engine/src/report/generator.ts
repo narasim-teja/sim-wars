@@ -129,6 +129,12 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
   // Build prompt.
   const transcript = buildTranscript(tickStates, maxTickLines);
   const agentLines = buildAgentLines(agents, actionsByAgent, maxActionsPerAgent);
+  // Action histogram across the whole run — feeding this to the LLM prompt
+  // prevents the "0 actions / total stagnation" hallucination we used to
+  // see when the transcript only sampled every Nth tick (subsampling
+  // dropped ticks where agents traded heavily). The histogram is computed
+  // once from the SimDatabase and reflects the WHOLE run.
+  const actionStats = db.getActionStats(simId);
   const prompt = buildReportPrompt({
     config,
     meta,
@@ -138,6 +144,7 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     deathSpiralDetected,
     deathSpiralAtTick,
     fieldSources,
+    actionStats,
   });
 
   let narrative = "";
@@ -177,6 +184,8 @@ export async function generateReport(opts: GenerateReportOptions): Promise<Simul
     finalReservePct: meta.finalReservePct,
     resilienceScore,
     resilienceGrade,
+    totalActions: actionStats.totalSuccessful,
+    totalOnChain: actionStats.totalOnChain,
   });
 
   // Recommendations: if the LLM was silent, fall back to engine-derived ones.
@@ -279,9 +288,27 @@ function computeChainActivity(
   if (dep.programs.staking) programs.push({ name: "staking", address: dep.programs.staking });
   if (dep.programs.governance) programs.push({ name: "governance", address: dep.programs.governance });
 
+  // Surface the *deployed* decimals, not the config value — Solana clamps
+  // EVM-style 18 down to 9 at deploy time, and reports that hide the clamp
+  // misrepresent the actual on-chain state.
+  const requestedDecimals = planInputs.config.token.decimals;
+  const deployedDecimals = dep.decimals;
+  const decimalsClampedFrom =
+    typeof requestedDecimals === "number" && requestedDecimals !== deployedDecimals
+      ? requestedDecimals
+      : undefined;
   const mints = [
-    { name: baseSymbol(dep), address: baseMintAddress(dep) },
-    { name: quoteSymbol(dep), address: quoteMintAddress(dep) },
+    {
+      name: baseSymbol(dep),
+      address: baseMintAddress(dep),
+      decimals: deployedDecimals,
+      ...(decimalsClampedFrom !== undefined ? { decimalsClampedFrom } : {}),
+    },
+    {
+      name: quoteSymbol(dep),
+      address: quoteMintAddress(dep),
+      decimals: deployedDecimals,
+    },
   ];
 
   // Re-run the plan with the same inputs the API used so the report can
@@ -619,12 +646,18 @@ function synthesizeExecSummary(args: {
   finalReservePct: number | null;
   resilienceScore: number;
   resilienceGrade: ResilienceGrade;
+  totalActions: number;
+  totalOnChain: number;
 }): string {
-  const { deathSpiralDetected, pricePctChange, finalReservePct, resilienceScore, resilienceGrade } = args;
+  const { deathSpiralDetected, pricePctChange, finalReservePct, resilienceScore, resilienceGrade, totalActions, totalOnChain } = args;
+  const activity =
+    totalActions === 0
+      ? "Agents held throughout — no trades or stake changes were submitted."
+      : `Agents submitted ${totalActions} actions (${totalOnChain} landed on-chain).`;
   if (deathSpiralDetected) {
-    return `Tokenomics design failed under adversarial load: price collapsed (${pricePctChange.toFixed(1)}%), reserve at ${finalReservePct?.toFixed(1) ?? "n/a"}%. Resilience ${resilienceScore}/100 (grade ${resilienceGrade}). The simulation reproduced a terminal cascade — agents extracted value faster than the protocol could defend.`;
+    return `Tokenomics design failed under adversarial load: price collapsed (${pricePctChange.toFixed(1)}%), reserve at ${finalReservePct?.toFixed(1) ?? "n/a"}%. Resilience ${resilienceScore}/100 (grade ${resilienceGrade}). The simulation reproduced a terminal cascade — agents extracted value faster than the protocol could defend. ${activity}`;
   }
-  return `Tokenomics design held up: price moved ${pricePctChange.toFixed(1)}%, reserve at ${finalReservePct?.toFixed(1) ?? "n/a"}%. Resilience ${resilienceScore}/100 (grade ${resilienceGrade}). The simulation surfaced ${resilienceScore < 60 ? "structural weaknesses worth addressing" : "no acute failure modes"}.`;
+  return `Tokenomics design held up: price moved ${pricePctChange.toFixed(1)}%, reserve at ${finalReservePct?.toFixed(1) ?? "n/a"}%. Resilience ${resilienceScore}/100 (grade ${resilienceGrade}). ${activity} The simulation surfaced ${resilienceScore < 60 ? "structural weaknesses worth addressing" : "no acute failure modes"}.`;
 }
 
 function inferComparison(args: {
@@ -683,10 +716,11 @@ interface PromptArgs {
   deathSpiralDetected: boolean;
   deathSpiralAtTick: number | null;
   fieldSources: FieldSources | null;
+  actionStats: { totalSuccessful: number; totalOnChain: number; byAction: { action: string; successful: number; onChain: number }[] };
 }
 
 function buildReportPrompt(args: PromptArgs): string {
-  const { config, meta, resilienceScore, transcript, agentLines, deathSpiralDetected, deathSpiralAtTick, fieldSources } = args;
+  const { config, meta, resilienceScore, transcript, agentLines, deathSpiralDetected, deathSpiralAtTick, fieldSources, actionStats } = args;
   const identity = [
     meta.protocolName ? `protocol: ${meta.protocolName}` : null,
     meta.tokenSymbol ? `token: ${meta.tokenSymbol}` : null,
@@ -723,6 +757,15 @@ ENGINE-DERIVED OUTCOME:
   finalReserve%: ${meta.finalReservePct == null ? "n/a" : meta.finalReservePct.toFixed(1)}
   deathSpiral: ${deathSpiralDetected ? `YES (tick ${deathSpiralAtTick})` : "no"}
   resilienceScore: ${resilienceScore}/100
+
+ACTION HISTOGRAM (whole run, NOT just transcript samples):
+  total successful actions (excl. hold): ${actionStats.totalSuccessful}
+  on-chain submissions: ${actionStats.totalOnChain}
+${actionStats.byAction.length === 0
+  ? "  (no executed actions — agents held throughout)"
+  : actionStats.byAction.map((r) => `  ${r.action}: ${r.successful} successful (${r.onChain} on-chain)`).join("\n")}
+
+CRITICAL: Do NOT claim agents "took no actions" or that the run was "stagnant" / "frozen" / "zero activity" if total successful actions > 0. The transcript above is SUBSAMPLED — quiet ticks in the sample do not mean quiet ticks in reality. Use the histogram for activity claims; use the transcript only for ordering / causality.
 
 TICK TRANSCRIPT (subsampled — every Nth tick):
 ${transcript}

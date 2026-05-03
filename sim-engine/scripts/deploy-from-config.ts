@@ -35,10 +35,15 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   LAMPORTS_PER_SOL,
+  Transaction,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import { BN } from "@anchor-lang/core";
 import {
   createMint,
+  createMintToInstruction,
+  createTransferInstruction,
+  getAccount,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   transfer,
@@ -184,6 +189,34 @@ async function pmapBounded<T, R>(
   return out;
 }
 
+/**
+ * Pack N TransactionInstructions into transactions of at most `instrPerTx`
+ * each and send them sequentially. Used for fan-out SPL ops (transfers
+ * from one source ATA, mintTos from one mint authority) where the parallel
+ * version races on the writable account lock and intermittently fails
+ * with `Custom: 1` (InsufficientFunds) on the validator side.
+ *
+ * Sequential at the tx level; instructions WITHIN a tx execute atomically.
+ * For 100 ops at instrPerTx=6 this is ~17 round-trips — much faster than
+ * truly serial individual transfers (~100 round-trips) while staying
+ * race-free.
+ */
+async function sendBatchedSplOps(args: {
+  connection: ReturnType<typeof getProvider>["connection"];
+  payer: Keypair;
+  instrPerTx: number;
+  ops: import("@solana/web3.js").TransactionInstruction[];
+}): Promise<void> {
+  const { connection, payer, instrPerTx, ops } = args;
+  if (ops.length === 0) return;
+  for (let i = 0; i < ops.length; i += instrPerTx) {
+    const slice = ops.slice(i, i + instrPerTx);
+    const tx = new Transaction();
+    for (const ix of slice) tx.add(ix);
+    await sendAndConfirmTransaction(connection, tx, [payer], { commitment: "confirmed" });
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { config, agents } = loadScenario(args.scenarioPath);
@@ -278,23 +311,23 @@ async function main() {
   // ─── 1. Base token mint via token_mint program ─────────────────────────
   const tokenMint = getTokenMintProgram(provider);
   console.log(`[deploy] init ${deploymentPlan.symbols.base} mint…`);
-  const lunaMintKp = Keypair.generate();
-  const lunaMint = lunaMintKp.publicKey;
-  const [mintAuthority] = deriveMintAuthority(lunaMint);
-  const [tokenomicsConfig] = deriveTokenomicsConfig(lunaMint);
+  const baseMintKp = Keypair.generate();
+  const baseMint = baseMintKp.publicKey;
+  const [mintAuthority] = deriveMintAuthority(baseMint);
+  const [tokenomicsConfig] = deriveTokenomicsConfig(baseMint);
 
   await tokenMint.methods
     .initializeMint(decimals)
     .accounts({
       authority: payer.publicKey,
-      mint: lunaMint,
+      mint: baseMint,
       mintAuthority,
       config: tokenomicsConfig,
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
     })
-    .signers([lunaMintKp])
+    .signers([baseMintKp])
     .rpc();
 
   // ─── 2. Configure tokenomics + create allocations ──────────────────────
@@ -380,8 +413,8 @@ async function main() {
     liquidAllocs[0]!,
   );
   const [seedAllocPda] = deriveAllocation(tokenomicsConfig, seedAlloc.name);
-  const deployerLunaAta = await getOrCreateAssociatedTokenAccount(
-    provider.connection, payer, lunaMint, payer.publicKey,
+  const deployerBaseAta = await getOrCreateAssociatedTokenAccount(
+    provider.connection, payer, baseMint, payer.publicKey,
   );
 
   const agentTokenSum = agents.reduce((s, a) => s + a.initialCapital.token, 0);
@@ -405,25 +438,44 @@ async function main() {
   const inflationBudget = args.withStaking && emissionRate > 0
     ? Math.max(0, totalStakedExpected * emissionRate * 200)
     : 0;
-  const lunaToMintUi = amm.initialLiquidity + agentTokenSum + rewardSeedTarget + inflationBudget;
+  const baseToMintUi = amm.initialLiquidity + agentTokenSum + rewardSeedTarget + inflationBudget;
   // Defensive: don't mint more than the seed allocation has room for.
   const seedAllocCapUi = (config.token.totalSupply * seedAlloc.percentBps) / 10_000;
-  if (lunaToMintUi > seedAllocCapUi) {
+  if (baseToMintUi > seedAllocCapUi) {
     throw new Error(
       `[deploy] liquid seed allocation '${seedAlloc.displayName}' (${seedAlloc.percentBps} bps = ${seedAllocCapUi} tokens) ` +
-        `cannot fund pool ${amm.initialLiquidity} + agents ${agentTokenSum} + reward ${rewardSeedTarget} + inflation ${inflationBudget} = ${lunaToMintUi}. ` +
+        `cannot fund pool ${amm.initialLiquidity} + agents ${agentTokenSum} + reward ${rewardSeedTarget} + inflation ${inflationBudget} = ${baseToMintUi}. ` +
         `Increase the liquid bucket or reduce agent initialCapital totals.`,
     );
   }
+  // Compute the mint amount in atom-space, summing the per-agent atom amounts
+  // directly (matching what we'll later transfer per agent) plus the AMM seed
+  // and reward/inflation buffers. Float-summing UI units and converting once
+  // at the end can lose ~N atoms for N agents (each `toFixed(decimals)` may
+  // round; summing rounded values diverges from sum-then-round). Doing the
+  // sum in atom space is exact, so the deployer ATA balance after mint
+  // matches the sum of subsequent per-agent transfer atoms exactly.
+  const agentBaseAtomsSum = agents.reduce<bigint>(
+    (s, a) => s + toAtomsBI(a.initialCapital.token),
+    0n,
+  );
+  const baseMintAtoms = new BN(
+    (
+      toAtomsBI(amm.initialLiquidity) +
+      agentBaseAtomsSum +
+      toAtomsBI(rewardSeedTarget) +
+      toAtomsBI(inflationBudget)
+    ).toString(),
+  );
   await tokenMint.methods
-    .distributeAllocation(toAtoms(lunaToMintUi))
+    .distributeAllocation(baseMintAtoms)
     .accounts({
       authority: payer.publicKey,
       config: tokenomicsConfig,
-      mint: lunaMint,
+      mint: baseMint,
       mintAuthority,
       allocation: seedAllocPda,
-      recipientAta: deployerLunaAta.address,
+      recipientAta: deployerBaseAta.address,
       tokenProgram: TOKEN_PROGRAM_ID,
     })
     .rpc();
@@ -447,7 +499,7 @@ async function main() {
     const beneficiaryPath = join(vestingDir, `_vesting_${alloc.displayName.replace(/\s+/g, "_")}.json`);
     const { keypair: beneficiaryKp } = loadOrCreateKeypair(beneficiaryPath);
     const beneficiaryAta = await getOrCreateAssociatedTokenAccount(
-      provider.connection, payer, lunaMint, beneficiaryKp.publicKey,
+      provider.connection, payer, baseMint, beneficiaryKp.publicKey,
     );
     const [allocPda] = deriveAllocation(tokenomicsConfig, alloc.name);
     const [vestingPda] = deriveVesting(tokenomicsConfig, beneficiaryKp.publicKey);
@@ -457,7 +509,7 @@ async function main() {
       .accounts({
         authority: payer.publicKey,
         config: tokenomicsConfig,
-        mint: lunaMint,
+        mint: baseMint,
         allocation: allocPda,
         beneficiary: beneficiaryKp.publicKey,
         vesting: vestingPda,
@@ -484,21 +536,21 @@ async function main() {
 
   // ─── 4. Mock quote-token mint ──────────────────────────────────────────
   console.log(`[deploy] create ${deploymentPlan.symbols.quote} mint…`);
-  const ustMint = await createMint(provider.connection, payer, payer.publicKey, null, decimals);
-  const deployerUstAta = await getOrCreateAssociatedTokenAccount(
-    provider.connection, payer, ustMint, payer.publicKey,
+  const quoteMint = await createMint(provider.connection, payer, payer.publicKey, null, decimals);
+  const deployerQuoteAta = await getOrCreateAssociatedTokenAccount(
+    provider.connection, payer, quoteMint, payer.publicKey,
   );
   const agentUsdcSum = agents.reduce((s, a) => s + a.initialCapital.usdc, 0);
-  const ustToMintUi = amm.initialLiquidity * amm.initialPrice + agentUsdcSum;
+  const quoteToMintUi = amm.initialLiquidity * amm.initialPrice + agentUsdcSum;
   await mintTo(
-    provider.connection, payer, ustMint, deployerUstAta.address, payer,
-    toAtomsBI(ustToMintUi),
+    provider.connection, payer, quoteMint, deployerQuoteAta.address, payer,
+    toAtomsBI(quoteToMintUi),
   );
 
   // ─── 5. AMM pool ──────────────────────────────────────────────────────
   console.log("[deploy] init AMM pool…");
   const ammDex = getAmmDexProgram(provider);
-  const [pool] = derivePool(lunaMint, ustMint);
+  const [pool] = derivePool(baseMint, quoteMint);
   const [poolAuthority] = derivePoolAuthority(pool);
   const [vaultA] = deriveVaultA(pool);
   const [vaultB] = deriveVaultB(pool);
@@ -509,8 +561,8 @@ async function main() {
     .initializePool(feeBps, 0)
     .accounts({
       authority: payer.publicKey,
-      tokenAMint: lunaMint,
-      tokenBMint: ustMint,
+      tokenAMint: baseMint,
+      tokenBMint: quoteMint,
       pool,
       poolAuthority,
       tokenAVault: vaultA,
@@ -535,8 +587,8 @@ async function main() {
       tokenAVault: vaultA,
       tokenBVault: vaultB,
       lpMint: lpMintKp.publicKey,
-      providerTokenA: deployerLunaAta.address,
-      providerTokenB: deployerUstAta.address,
+      providerTokenA: deployerBaseAta.address,
+      providerTokenB: deployerQuoteAta.address,
       providerLp: deployerLpAta.address,
       tokenProgram: TOKEN_PROGRAM_ID,
     })
@@ -547,7 +599,7 @@ async function main() {
   if (args.withStaking) {
     console.log("[deploy] init staking pool…");
     const staking = getStakingProgram(provider);
-    const [stakingPool] = deriveStakingPool(lunaMint);
+    const [stakingPool] = deriveStakingPool(baseMint);
     const [stakingPoolAuthority] = deriveStakingPoolAuthority(stakingPool);
     const [stakeVault] = deriveStakeVault(stakingPool);
     const [rewardVault] = deriveRewardVault(stakingPool);
@@ -569,7 +621,7 @@ async function main() {
       .initializePool(baseApyBps, ticksPerYear, lockTicks, cooldownTicks, maxApyBps, penaltyBps)
       .accounts({
         authority: payer.publicKey,
-        stakeMint: lunaMint,
+        stakeMint: baseMint,
         pool: stakingPool,
         poolAuthority: stakingPoolAuthority,
         stakeVault,
@@ -582,11 +634,11 @@ async function main() {
 
     // Seed the reward vault from the deployer's base-token ATA so claim_rewards has
     // something to pay out. The amount is `rewardSeedTarget` (computed up
-    // front and already added to lunaToMintUi), so the transfer cannot starve
+    // front and already added to baseToMintUi), so the transfer cannot starve
     // the per-agent funding loop that runs after this.
     const rewardSeedUi = rewardSeedTarget;
     await transfer(
-      provider.connection, payer, deployerLunaAta.address, rewardVault, payer,
+      provider.connection, payer, deployerBaseAta.address, rewardVault, payer,
       toAtomsBI(rewardSeedUi),
     );
     stakingDeployment = {
@@ -595,7 +647,7 @@ async function main() {
       poolAuthority: stakingPoolAuthority.toBase58(),
       stakeVault: stakeVault.toBase58(),
       rewardVault: rewardVault.toBase58(),
-      stakeMint: lunaMint.toBase58(),
+      stakeMint: baseMint.toBase58(),
       unstakeCooldownTicks: cooldownTicks,
       lockPeriodTicks: lockTicks,
       maxApyBps,
@@ -632,16 +684,33 @@ async function main() {
   }
 
   // ─── 8. Per-agent keypairs + ATAs + funding ────────────────────────────
+  // Three-phase pipeline:
+  //   (a) Parallel — keypair load + SOL airdrop + ATA creation (no contention)
+  //   (b) Serial-batched — base-token transfers from deployer's ATA (avoids
+  //       same-source-ATA simulation/execution races that intermittently
+  //       failed with `Custom: 1` (InsufficientFunds))
+  //   (c) Serial-batched — quote mintTo (mint authority is shared, so
+  //       parallel mintTos contend on the mint account write lock)
+  // Both (b) and (c) pack ~6 SPL instructions per transaction, so a 100-agent
+  // run is ~17 round-trips instead of 100 — fast and correct.
   const keysDir = args.simId ? join(LOCAL_DIR, "runs", args.simId, "keys") : KEYS_DIR;
   if (!existsSync(keysDir)) mkdirSync(keysDir, { recursive: true });
 
-  console.log(`[deploy] funding ${agents.length} agents in parallel…`);
   const fundT0 = Date.now();
-  // Concurrency: localnet test-validator handles ~25 in-flight RPCs without
-  // dropping. Helius / private RPC can take far more — bumpable via env.
-  // Public devnet should drop to ~8 to avoid rate limiting.
-  const FUND_CONCURRENCY = Number(process.env.DEPLOY_AGENT_CONCURRENCY) || 25;
-  const entries: AgentWalletEntry[] = await pmapBounded(agents, FUND_CONCURRENCY, async (persona) => {
+  const SETUP_CONCURRENCY = Number(process.env.DEPLOY_AGENT_CONCURRENCY) || 25;
+  const FUND_INSTR_PER_TX = Math.max(1, Number(process.env.DEPLOY_FUND_BATCH) || 6);
+
+  console.log(`[deploy] phase 1/3: keypair + airdrop + ATA for ${agents.length} agents (parallel, concurrency=${SETUP_CONCURRENCY})…`);
+  type AgentSetup = {
+    persona: typeof agents[number];
+    keypair: Keypair;
+    keypairPath: string;
+    baseAta: PublicKey;
+    quoteAta: PublicKey;
+    baseAtoms: bigint;
+    quoteAtoms: bigint;
+  };
+  const setups: AgentSetup[] = await pmapBounded(agents, SETUP_CONCURRENCY, async (persona) => {
     const keypairPath = join(keysDir, `${persona.id}.json`);
     const { keypair } = loadOrCreateKeypair(keypairPath);
     const balance = await provider.connection.getBalance(keypair.publicKey);
@@ -654,37 +723,69 @@ async function main() {
         console.warn(`[deploy] airdrop failed for ${persona.id}: ${(e as Error).message}`);
       }
     }
-    // ATA creation can run in parallel for the same payer because each call
-    // writes a different PDA; idempotent if the ATA already exists.
-    const [lunaAta, ustAta] = await Promise.all([
-      getOrCreateAssociatedTokenAccount(provider.connection, payer, lunaMint, keypair.publicKey),
-      getOrCreateAssociatedTokenAccount(provider.connection, payer, ustMint, keypair.publicKey),
-    ]);
-    const lunaAtoms = toAtomsBI(persona.initialCapital.token);
-    const ustAtoms = toAtomsBI(persona.initialCapital.usdc);
-    // Token transfers can also run in parallel — they share the deployer's
-    // signer (payer) but Solana only enforces uniqueness on the source ATA's
-    // *current* state per slot, not across in-flight tx. Worst case the
-    // validator queues them; throughput still wins by ~5-10x vs serial.
-    await Promise.all([
-      lunaAtoms > 0n
-        ? transfer(provider.connection, payer, deployerLunaAta.address, lunaAta.address, payer, lunaAtoms)
-        : Promise.resolve(undefined as never),
-      ustAtoms > 0n
-        ? mintTo(provider.connection, payer, ustMint, ustAta.address, payer, ustAtoms)
-        : Promise.resolve(undefined as never),
+    const [baseAta, quoteAta] = await Promise.all([
+      getOrCreateAssociatedTokenAccount(provider.connection, payer, baseMint, keypair.publicKey),
+      getOrCreateAssociatedTokenAccount(provider.connection, payer, quoteMint, keypair.publicKey),
     ]);
     return {
-      agentId: persona.id,
-      pubkey: keypair.publicKey.toBase58(),
+      persona,
+      keypair,
       keypairPath,
-      baseAta: lunaAta.address.toBase58(),
-      quoteAta: ustAta.address.toBase58(),
-      lunaAta: lunaAta.address.toBase58(),
-      ustAta: ustAta.address.toBase58(),
+      baseAta: baseAta.address,
+      quoteAta: quoteAta.address,
+      baseAtoms: toAtomsBI(persona.initialCapital.token),
+      quoteAtoms: toAtomsBI(persona.initialCapital.usdc),
     };
   });
-  console.log(`[deploy]   funded ${agents.length} agents in ${Date.now() - fundT0}ms (concurrency=${FUND_CONCURRENCY})`);
+
+  // Pre-flight: confirm the deployer's base ATA actually has enough atoms
+  // for the upcoming transfers. The earlier mint+pool seed should have
+  // landed by now, but if anything is delayed we want a clean error here
+  // rather than a cryptic `Custom: 1` mid-batch.
+  const totalBaseTransfer = setups.reduce((sum, s) => sum + s.baseAtoms, 0n);
+  const deployerBaseAcc = await getAccount(provider.connection, deployerBaseAta.address);
+  if (deployerBaseAcc.amount < totalBaseTransfer) {
+    throw new Error(
+      `[deploy] deployer ${deploymentPlan.symbols.base} ATA has ${deployerBaseAcc.amount} atoms, ` +
+        `but agent funding needs ${totalBaseTransfer}. Mint capacity exceeded — increase liquid bucket or reduce agent capital.`,
+    );
+  }
+
+  console.log(`[deploy] phase 2/3: ${deploymentPlan.symbols.base} transfers (batched, ${FUND_INSTR_PER_TX} instructions/tx)…`);
+  await sendBatchedSplOps({
+    connection: provider.connection,
+    payer,
+    instrPerTx: FUND_INSTR_PER_TX,
+    ops: setups
+      .filter((s) => s.baseAtoms > 0n)
+      .map((s) =>
+        createTransferInstruction(deployerBaseAta.address, s.baseAta, payer.publicKey, s.baseAtoms),
+      ),
+  });
+
+  console.log(`[deploy] phase 3/3: ${deploymentPlan.symbols.quote} mintTo (batched, ${FUND_INSTR_PER_TX} instructions/tx)…`);
+  await sendBatchedSplOps({
+    connection: provider.connection,
+    payer,
+    instrPerTx: FUND_INSTR_PER_TX,
+    ops: setups
+      .filter((s) => s.quoteAtoms > 0n)
+      .map((s) =>
+        createMintToInstruction(quoteMint, s.quoteAta, payer.publicKey, s.quoteAtoms),
+      ),
+  });
+
+  const entries: AgentWalletEntry[] = setups.map((s) => ({
+    agentId: s.persona.id,
+    pubkey: s.keypair.publicKey.toBase58(),
+    keypairPath: s.keypairPath,
+    baseAta: s.baseAta.toBase58(),
+    quoteAta: s.quoteAta.toBase58(),
+    // Legacy field aliases for older readers; new code should use baseAta/quoteAta.
+    lunaAta: s.baseAta.toBase58(),
+    ustAta: s.quoteAta.toBase58(),
+  }));
+  console.log(`[deploy]   funded ${agents.length} agents in ${Date.now() - fundT0}ms`);
 
   // ─── 9. Write deployment manifest ──────────────────────────────────────
   const deployment: Deployment = {
@@ -696,10 +797,10 @@ async function main() {
       ...(args.withGovernance ? { governance: GOVERNANCE_PROGRAM_ID.toBase58() } : {}),
     },
     mints: {
-      base: lunaMint.toBase58(),
-      quote: ustMint.toBase58(),
-      luna: lunaMint.toBase58(),
-      ust: ustMint.toBase58(),
+      base: baseMint.toBase58(),
+      quote: quoteMint.toBase58(),
+      luna: baseMint.toBase58(),
+      ust: quoteMint.toBase58(),
     },
     symbols: deploymentPlan.symbols,
     pool: {
@@ -708,6 +809,9 @@ async function main() {
       vaultA: vaultA.toBase58(),
       vaultB: vaultB.toBase58(),
       lpMint: lpMintKp.publicKey.toBase58(),
+      aIsBase: true,
+      // Legacy alias kept so older readers (chain/sdk.ts pre-poolBaseInSlotA)
+      // still parse this manifest. New code reads via poolBaseInSlotA().
       aIsLuna: true,
     },
     config: { address: tokenomicsConfig.toBase58() },
@@ -716,7 +820,7 @@ async function main() {
     ...(args.withGovernance ? {
       governance: {
         program: GOVERNANCE_PROGRAM_ID.toBase58(),
-        governance: deriveGovernance(deriveStakingPool(lunaMint)[0])[0].toBase58(),
+        governance: deriveGovernance(deriveStakingPool(baseMint)[0])[0].toBase58(),
         initialProposalCount: 0,
       },
     } : {}),

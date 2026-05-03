@@ -83,7 +83,13 @@ export interface ChainActivity {
   onChainPct: number;
   byAction: { action: string; successful: number; onChain: number }[];
   programs: { name: string; address: string }[];
-  mints: { name: string; address: string }[];
+  /**
+   * Deployed mints. `decimals` is the value the SPL mint was created with —
+   * may differ from `config.token.decimals` when the deploy script clamped
+   * 18-decimal EVM-style values down to 9 for Solana. `decimalsClampedFrom`
+   * is set iff a clamp happened, so the UI can surface the discrepancy.
+   */
+  mints: { name: string; address: string; decimals: number; decimalsClampedFrom?: number }[];
   pool: { address: string } | null;
   /**
    * Programs the deployment plan intentionally skipped because the user
@@ -92,7 +98,7 @@ export interface ChainActivity {
    * program was ever deployed.
    */
   skippedPrograms?: {
-    program: "staking" | "governance" | "stablecoin";
+    program: "staking" | "governance";
     reason: string;
     enableHint: string;
   }[];

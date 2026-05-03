@@ -592,7 +592,7 @@ function ChainArtifactList({
   explorerBase,
 }: {
   title: string;
-  rows: { name: string; address: string }[];
+  rows: { name: string; address: string; decimals?: number; decimalsClampedFrom?: number }[];
   explorerBase: string | null;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -609,7 +609,17 @@ function ChainArtifactList({
           const href = explorerBase ? buildExplorerUrl(explorerBase, row.address) : null;
           return (
             <li key={row.address} className="flex items-center gap-2 font-mono text-[11px]">
-              <span className="w-20 shrink-0 text-zinc-600">{row.name}</span>
+              <span className="flex w-20 shrink-0 items-center gap-1 text-zinc-600">
+                {row.name}
+                {row.decimalsClampedFrom !== undefined && row.decimals !== undefined && (
+                  <span
+                    title={`Source specified ${row.decimalsClampedFrom} decimals; SPL mint deployed with ${row.decimals} (Solana practical max).`}
+                    className="rounded border border-amber-200 bg-amber-50 px-1 text-[9px] uppercase tracking-[0.15em] text-amber-700"
+                  >
+                    d{row.decimals}←{row.decimalsClampedFrom}
+                  </span>
+                )}
+              </span>
               <span className="flex-1 truncate text-zinc-900">{truncateMid(row.address, 24)}</span>
               <button
                 onClick={() => {

@@ -14,7 +14,7 @@
 import type { SimulationConfigParsed } from "./extraction/types";
 
 export interface SkippedProgram {
-  program: "staking" | "governance" | "stablecoin";
+  program: "staking" | "governance";
   reason: string;
   enableHint: string;
 }

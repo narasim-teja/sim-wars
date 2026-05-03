@@ -51,11 +51,16 @@ export interface ChainActivity {
   onChainPct: number;
   byAction: { action: string; successful: number; onChain: number }[];
   programs: { name: string; address: string }[];
-  mints: { name: string; address: string }[];
+  /**
+   * Deployed mints. `decimals` reflects the actual on-chain SPL mint;
+   * `decimalsClampedFrom` is set iff the deploy script clamped (typically
+   * EVM-style 18 → Solana-safe 9).
+   */
+  mints: { name: string; address: string; decimals: number; decimalsClampedFrom?: number }[];
   pool: { address: string } | null;
   /** Programs intentionally not deployed (config section never grounded). */
   skippedPrograms?: {
-    program: "staking" | "governance" | "stablecoin";
+    program: "staking" | "governance";
     reason: string;
     enableHint: string;
   }[];

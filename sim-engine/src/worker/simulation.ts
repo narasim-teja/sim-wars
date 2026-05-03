@@ -56,8 +56,8 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   let chainExecutor: ChainExecutor | null = null;
   if (onChain) {
     chainExecutor = new ChainExecutor();
-    const { reserveLuna, reserveUst } = await chainExecutor.getPrice();
-    stateManager.setPoolReserves(reserveLuna, reserveUst);
+    const { reserveBase, reserveQuote } = await chainExecutor.getPrice();
+    stateManager.setPoolReserves(reserveBase, reserveQuote);
   }
 
   const orchestrator = new AgentOrchestrator(agents, llm, stateManager, db, simId, chainExecutor);

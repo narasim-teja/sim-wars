@@ -410,8 +410,8 @@ export class AgentOrchestrator {
               const balances = await this.chain.getAgentBalances(agent.persona.id);
               agent.holdings.token = balances.base;
               agent.holdings.usdc = balances.quote;
-              const { reserveLuna, reserveUst } = await this.chain.getPrice();
-              this.stateManager.setPoolReserves(reserveLuna, reserveUst);
+              const { reserveBase, reserveQuote } = await this.chain.getPrice();
+              this.stateManager.setPoolReserves(reserveBase, reserveQuote);
               this.stateManager.recordTrade(agent.persona.id, "buy", usdcToSpend);
               return this.buildAction(agent, decision, sim, true, result.txSignature);
             } catch (e) {
@@ -444,8 +444,8 @@ export class AgentOrchestrator {
               const balances = await this.chain.getAgentBalances(agent.persona.id);
               agent.holdings.token = balances.base;
               agent.holdings.usdc = balances.quote;
-              const { reserveLuna, reserveUst } = await this.chain.getPrice();
-              this.stateManager.setPoolReserves(reserveLuna, reserveUst);
+              const { reserveBase, reserveQuote } = await this.chain.getPrice();
+              this.stateManager.setPoolReserves(reserveBase, reserveQuote);
               this.stateManager.recordTrade(agent.persona.id, "sell", tokensToSell);
               return this.buildAction(agent, decision, sim, true, result.txSignature);
             } catch (e) {

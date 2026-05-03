@@ -78,6 +78,26 @@ async function handleCreate(req: Request): Promise<Response> {
   if (!body.config || !body.tickConfig) {
     return json({ error: "config and tickConfig are required" }, { status: 400 });
   }
+  // Worker treats `maxTicks=0` as "run forever" but in practice it short-
+  // circuits to 0 ticks completed and ships an empty F-grade report —
+  // confusing failure mode for users who fat-finger the field name (e.g.
+  // `totalTicks` instead of `maxTicks`). Reject loudly at the boundary.
+  const tc = body.tickConfig as Partial<TickConfig>;
+  if (typeof tc.maxTicks !== "number" || !Number.isFinite(tc.maxTicks) || tc.maxTicks <= 0) {
+    return json(
+      {
+        error: `tickConfig.maxTicks must be a positive number, got ${JSON.stringify(tc.maxTicks)}. ` +
+          `If you sent 'totalTicks', the correct field is 'maxTicks'.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (typeof tc.intervalMs !== "number" || tc.intervalMs < 0) {
+    return json(
+      { error: `tickConfig.intervalMs must be a non-negative number, got ${JSON.stringify(tc.intervalMs)}` },
+      { status: 400 },
+    );
+  }
 
   // Coalesce sparse extraction output (`amm: {}` etc.) to a fully-populated
   // config before we hand it to the worker or the deploy script. Without

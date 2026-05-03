@@ -45,7 +45,7 @@ export interface DeploymentPlanResponse {
   symbols: { base: string; quote: string };
   programs: { tokenMint: true; ammDex: true; staking: boolean; governance: boolean };
   skipped: {
-    program: "staking" | "governance" | "stablecoin";
+    program: "staking" | "governance";
     reason: string;
     enableHint: string;
   }[];
