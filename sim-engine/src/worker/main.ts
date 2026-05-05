@@ -137,7 +137,14 @@ async function main() {
 
     const status: SimStatus = aborted ? "interrupted" : (summary.deathSpiralDetected ? "death_spiral" : "completed");
     setStatus(status, lastTick);
-    events.emit({ kind: "sim:complete", ts: Date.now(), simId, status, totalTicks: lastTick });
+    events.emit({
+      kind: "sim:complete",
+      ts: Date.now(),
+      simId,
+      status,
+      totalTicks: lastTick,
+      llmUsage: summary.llmUsage.calls > 0 ? summary.llmUsage : undefined,
+    });
 
     // ── Post-sim report ────────────────────────────────────────────────────
     // Skip if the run was aborted very early (no state to report on) or if

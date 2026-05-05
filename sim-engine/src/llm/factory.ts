@@ -28,24 +28,33 @@ export interface BuildLLMOptions {
    */
   preset?: string;
   /** Boost provider for `complexity: "fast"` agents. Pass null to disable. */
-  boost?: BoostConfig | null;
+  boost?: TierConfig | null;
+  /** Reasoning provider for `complexity: "reasoning"` agents. Pass null to disable. */
+  reasoning?: TierConfig | null;
 }
 
-export interface BoostConfig {
+export interface TierConfig {
   model?: string;
   preset?: string;
   apiKey?: string;
   baseUrl?: string;
 }
 
+/** @deprecated alias kept for callers that still import BoostConfig. */
+export type BoostConfig = TierConfig;
+
 /**
  * Build the agent-decision LLM client. OpenRouter only.
  *
  * Preset routing (env-driven):
- *   - primary: OPENROUTER_AGENT_PRESET
- *   - boost:   OPENROUTER_BOOST_PRESET (only used by RoutingLLMClient when an
- *              agent persona has `complexity: "fast"`)
- *   - report:  OPENROUTER_REPORT_PRESET (used by buildReportLLMClient)
+ *   - primary:   OPENROUTER_AGENT_PRESET
+ *   - boost:     OPENROUTER_BOOST_PRESET — used for `complexity: "fast"`
+ *   - reasoning: OPENROUTER_REASONING_PRESET — used for `complexity: "reasoning"`
+ *   - report:    OPENROUTER_REPORT_PRESET — used by buildReportLLMClient
+ *
+ * If neither boost nor reasoning is configured, returns the bare primary
+ * client (no router wrapper). Otherwise returns a RoutingLLMClient that
+ * fans out to the configured tiers in parallel.
  */
 export function buildLLMClient(opts: BuildLLMOptions = {}): LLMClient {
   const providerKind = opts.provider ?? "openrouter";
@@ -57,9 +66,10 @@ export function buildLLMClient(opts: BuildLLMOptions = {}): LLMClient {
     preset: opts.preset ?? process.env.OPENROUTER_AGENT_PRESET,
   });
 
-  const boost = resolveBoost(opts.boost);
-  if (!boost) return primary;
-  return new RoutingLLMClient(primary, boost);
+  const boost = resolveTier(opts.boost, "OPENROUTER_BOOST_PRESET");
+  const reasoning = resolveTier(opts.reasoning, "OPENROUTER_REASONING_PRESET");
+  if (!boost && !reasoning) return primary;
+  return new RoutingLLMClient(primary, { primary, boost, reasoning });
 }
 
 /**
@@ -74,7 +84,13 @@ export function buildReportLLMClient(opts: BuildLLMOptions = {}): LLMClient {
   return new OpenRouterProvider({ preset: reportPreset });
 }
 
-function resolveBoost(override?: BoostConfig | null): LLMClient | null {
+/**
+ * Resolve a tier (boost or reasoning):
+ *   - explicit `null` from caller → tier disabled.
+ *   - explicit config object → instantiate with those settings.
+ *   - otherwise → look up the env var; if set, use it; if not, return null.
+ */
+function resolveTier(override: TierConfig | null | undefined, envVar: string): LLMClient | null {
   if (override === null) return null;
   if (override) {
     return new OpenRouterProvider({
@@ -84,7 +100,7 @@ function resolveBoost(override?: BoostConfig | null): LLMClient | null {
       preset: override.preset,
     });
   }
-  const preset = process.env.OPENROUTER_BOOST_PRESET;
+  const preset = process.env[envVar];
   if (!preset) return null;
   return new OpenRouterProvider({ preset });
 }

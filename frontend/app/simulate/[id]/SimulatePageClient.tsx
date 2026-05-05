@@ -18,6 +18,7 @@ import { ThreatIndicator } from "@/components/sim/ThreatIndicator";
 import { SimControls } from "@/components/sim/SimControls";
 import { SystemDashboard } from "@/components/sim/SystemDashboard";
 import { SectionCard } from "@/components/sim/SectionCard";
+import { CostMeter } from "@/components/sim/CostMeter";
 import { AGENT_COLORS, AGENT_LABELS, agentTypeFromId } from "@/lib/agent-colors";
 import { cn } from "@/lib/utils";
 
@@ -213,6 +214,19 @@ export function SimulatePageClient({ simId }: { simId: string }) {
               subtitle={`${sim.agentCount || Object.keys(sim.agents).length} agents · live balances`}
             >
               <RosterList state={sim} onSelect={setSelectedAgent} />
+            </SectionCard>
+
+            <SectionCard
+              number="06"
+              title="LLM cost meter"
+              subtitle={`live spend · ${sim.totalUsage.calls.toLocaleString()} calls so far`}
+              status={sim.costSeries.length > 0 ? "live" : "ready"}
+            >
+              <CostMeter
+                totalUsage={sim.totalUsage}
+                lastTickUsage={sim.lastTickUsage}
+                costSeries={sim.costSeries}
+              />
             </SectionCard>
 
             <ThreatIndicator level={threat.level} reasons={threat.reasons} />

@@ -1,14 +1,48 @@
 import type { AgentState, SimulationState } from "../types";
+import type { PromptZone } from "./types";
+import { flattenZones } from "./types";
+
+/**
+ * Stable framing — identical across every agent in every tick of the sim.
+ * This is the largest cacheable block. Sticky-routed by OpenRouter on the
+ * (system-msg-hash, user-msg-hash) pair, so all 1000+ agents share one
+ * cache lane for this content.
+ *
+ * Hard rule: nothing in this string may vary per-agent or per-tick. If a
+ * value would change between ticks, it belongs in the dynamic zone.
+ */
+const FRAME_ZONE = `You are an autonomous market-participant agent inside a live token-economy simulation on Solana devnet. You decide one action per tick based on price, holdings, memory, and observed actions of other agents.
+
+OUTPUT FORMAT: respond with ONLY valid JSON, no markdown, no prose outside JSON:
+{
+  "action": "buy" | "sell" | "stake" | "unstake" | "propose" | "vote_yes" | "vote_no" | "hold" | "burn_stablecoin",
+  "amount": <number, or for vote_yes/vote_no the proposal id (omit to vote on latest), null for hold>,
+  "reasoning": "<1-2 sentence explanation; for 'propose' this becomes the proposal description>",
+  "threat_assessment": "<what failure mode do you sense, if any>"
+}
+
+CONSTRAINTS:
+- You can only sell/unstake what you currently hold.
+- Maximum buy is limited by your USDC balance.
+- "amount" must be a real positive number when acting (NOT null), tokens or USDC units depending on the action.
+- "hold" is the default only when NO numeric trigger fires. Do not hold just because prior ticks held.
+
+DECISION GUIDANCE:
+- Your persona's NUMERIC DECISION TRIGGERS are not optional — if any trigger condition is met, ACT this tick.
+- If you sell/unstake based on reserve or peg state, say so explicitly in "reasoning" (e.g. "reserve down 12%, unstaking").
+- Reasoning must reference at least one concrete metric (price, holdings, peer action, governance state).`;
 
 /**
  * Build the per-tick LLM prompt for an agent.
- * The prompt gives the agent its identity, market context, and constraints,
- * then asks for a JSON action decision.
+ *
+ * Returns BOTH a flattened string (for providers that don't understand
+ * cache zones) AND structured zones (for OpenRouter's cache_control path).
+ * The orchestrator passes both to the LLM client; the client picks one.
  */
 export function buildAgentPrompt(
   agent: AgentState,
   sim: SimulationState
-): string {
+): { prompt: string; zones: PromptZone[] } {
   const priceNow = sim.tokenPrice;
   const price5TicksAgo =
     sim.priceHistory[Math.max(0, sim.priceHistory.length - 6)] ?? priceNow;
@@ -84,10 +118,14 @@ export function buildAgentPrompt(
         .join("; ")}`
     : "";
 
-  return `You are ${agent.persona.name} in a live token economy simulation on Solana devnet.
+  // Zone 2 — archetype: identical for every agent of this persona id, every
+  // tick. Becomes a cache lane shared by all clones of the persona.
+  const archetypeText = `YOUR IDENTITY AND GOALS:
+${agent.persona.systemPrompt}`;
 
-YOUR IDENTITY AND GOALS:
-${agent.persona.systemPrompt}
+  // Zone 3 — dynamic: changes every tick. Must be sized smaller than the
+  // cacheable zones above to keep the cache-hit ratio high.
+  const dynamicText = `AGENT NAME: ${agent.persona.name}
 
 CURRENT MARKET STATE (Tick ${sim.tick}):
 - Token price: $${priceNow.toFixed(4)} (was $${price5TicksAgo.toFixed(4)} five ticks ago)
@@ -97,28 +135,19 @@ CURRENT MARKET STATE (Tick ${sim.tick}):
 - Total staked: ${((sim.stakedSupply / sim.totalSupply) * 100).toFixed(1)}% of supply
 - Wealth concentration (Gini): ${sim.giniCoefficient.toFixed(3)}${giniWarning}${stablecoinSection}${rewardsLine}${governanceLine}
 - Recent large trades: ${recentTrades}
+- Token balance: ${agent.holdings.token.toLocaleString()}, USDC balance: $${agent.holdings.usdc.toLocaleString()}
 
 YOUR RECENT ACTIONS: ${myActions}
 OTHER AGENTS RECENTLY: ${othersActions}
 
-CONSTRAINTS:
-- You can only sell/unstake what you hold
-- Maximum buy limited by your USDC balance
-- Token balance: ${agent.holdings.token.toLocaleString()}, USDC balance: $${agent.holdings.usdc.toLocaleString()}
+Decide your next action now.`;
 
-DECISION GUIDANCE:
-- Your persona's NUMERIC DECISION TRIGGERS are not optional — if any trigger condition is met above, ACT this tick.
-- "hold" is the default only when NO trigger fires. Do not hold just because prior ticks held.
-- When acting, set "amount" to a real positive number (tokens or USDC units), NOT null.
-- If you decide to sell/unstake based on reserve or peg, say so explicitly in "reasoning" (e.g. "reserve down 12%, unstaking").
-
-Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
-{
-  "action": "buy" | "sell" | "stake" | "unstake" | "propose" | "vote_yes" | "vote_no" | "hold" | "burn_stablecoin",
-  "amount": <number, or for vote_yes/vote_no the proposal id (omit to vote on latest), null for hold>,
-  "reasoning": "<1-2 sentence explanation; for 'propose' this becomes the proposal description>",
-  "threat_assessment": "<what failure mode do you sense, if any>"
-}`;
+  const zones: PromptZone[] = [
+    { id: "frame", text: FRAME_ZONE },
+    { id: "archetype", text: archetypeText },
+    { id: "dynamic", text: dynamicText },
+  ];
+  return { prompt: flattenZones(zones), zones };
 }
 
 function describeTrend(prices: number[]): string {

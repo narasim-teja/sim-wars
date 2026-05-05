@@ -71,6 +71,12 @@ describe("runSimulation (end-to-end)", () => {
     expect(tickEvents).toEqual([0, 1, 2]);
     expect(llm.calls.length).toBeGreaterThanOrEqual(6); // 2 agents × 3 ticks
 
+    // Telemetry plumbing: orchestrator drains usage each tick and totals on
+    // RunSimulationResult. Mock returns ZERO_USAGE except for `calls`, but
+    // a non-zero call count proves the wire is connected end-to-end.
+    expect(summary.llmUsage.calls).toBeGreaterThanOrEqual(6);
+    expect(summary.llmUsage.costUsd).toBe(0); // mock has no cost
+
     // WHALE_TEST sold 100 tokens each of 3 ticks → 300 sold
     // The actions table should reflect those sells
     const whaleHistory = db.getAgentHistory(simId, "WHALE_TEST", 10);

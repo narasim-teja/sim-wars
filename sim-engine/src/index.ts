@@ -117,7 +117,11 @@ async function main() {
           console.log(`      Threat: "${a.threatAssessment}"`);
         }
       }
-      console.log(`\n  Tick ${result.tick} completed in ${result.duration_ms}ms`);
+      const u = result.llmUsage;
+      const usagePart = u && u.calls > 0
+        ? `  llm: ${u.calls} calls, $${u.costUsd.toFixed(6)}, cache=${u.cachedTokens}/${u.promptTokens} (${u.promptTokens > 0 ? ((u.cachedTokens / u.promptTokens) * 100).toFixed(0) : 0}%)`
+        : "";
+      console.log(`\n  Tick ${result.tick} completed in ${result.duration_ms}ms${usagePart}`);
       lastCompletedTick = result.tick;
     },
     onDeathSpiral: () => {
@@ -134,6 +138,13 @@ async function main() {
       console.log(`  Initial price: $${s.initialPrice}`);
       console.log(`  Final price: $${s.finalPrice.toFixed(4)} (${changePct}%)`);
       console.log(`  Death spiral: ${s.deathSpiralDetected ? "YES" : "NO"}`);
+      const u = s.llmUsage;
+      if (u.calls > 0) {
+        const cacheHitPct = u.promptTokens > 0 ? (u.cachedTokens / u.promptTokens) * 100 : 0;
+        const avgCost = u.costUsd / u.calls;
+        console.log(`  LLM total: ${u.calls} calls, $${u.costUsd.toFixed(4)} (avg $${avgCost.toFixed(6)}/call)`);
+        console.log(`  LLM tokens: prompt=${u.promptTokens.toLocaleString()} (cached=${u.cachedTokens.toLocaleString()} / ${cacheHitPct.toFixed(1)}% hit), completion=${u.completionTokens.toLocaleString()}`);
+      }
     },
   });
 

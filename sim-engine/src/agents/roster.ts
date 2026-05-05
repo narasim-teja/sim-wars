@@ -235,6 +235,36 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+/**
+ * Default per-tick LLM activation by archetype prefix. Used by the
+ * "sampled" / "volatility" activation policies to skip dormant agents.
+ *
+ * Calibration intent:
+ *   - Always-on (1.0): WHALE, GOV, MEV, PANIC — event-driven, must react
+ *     to every market move so cascades stay realistic.
+ *   - Frequent (0.6–0.8): ARB, INSIDER, ANALYST — react quickly but not
+ *     literally every tick.
+ *   - Periodic (0.3–0.4): FARMER, DEGEN, SYBIL — slower yield/momentum
+ *     re-evaluation; volatility multiplier wakes them in crashes.
+ *   - Rare (0.1–0.2): HOLDER, TREASURY, LP — long-horizon participants
+ *     who rarely have an edge in any given tick.
+ */
+const DEFAULT_ACTIVATION: Record<string, number> = {
+  WHALE: 1.0,
+  GOV: 1.0,
+  MEV: 1.0,
+  PANIC: 1.0,
+  ARB: 0.7,
+  INSIDER: 0.7,
+  ANALYST: 0.6,
+  FARMER: 0.4,
+  DEGEN: 0.4,
+  SYBIL: 0.3,
+  HOLDER: 0.15,
+  TREASURY: 0.15,
+  LP: 0.15,
+};
+
 const GENERIC_PERSONAS: AgentPersona[] = [
   generic("WHALE_01", "whale", "Capital Allocator", "reasoning", 0.35, { token: 20_000_000, usdc: 8_000_000, stakedFraction: 0.25 },
     "You manage a large position in the protocol token. Optimize exit value, liquidity, and governance influence using only the live market, staking, peg, and governance data in the prompt."),
@@ -273,6 +303,7 @@ function generic(
   initialCapital: AgentPersona["initialCapital"],
   behavior: string,
 ): AgentPersona {
+  const prefix = id.split("_")[0]!;
   return {
     id,
     type,
@@ -280,6 +311,7 @@ function generic(
     complexity,
     riskTolerance,
     initialCapital,
+    activation: DEFAULT_ACTIVATION[prefix] ?? 0.5,
     systemPrompt: `${behavior}
 
 NUMERIC DECISION TRIGGERS:

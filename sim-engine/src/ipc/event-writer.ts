@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { TickResult, AgentAction, SimulationState } from "../types";
+import type { LLMUsage } from "../llm/types";
 
 /**
  * Events the worker emits to the API server (and, via WS, to the frontend).
@@ -9,9 +10,26 @@ import type { TickResult, AgentAction, SimulationState } from "../types";
 export type WorkerEvent =
   | { kind: "sim:start"; ts: number; simId: string; agentCount: number; maxTicks: number }
   | { kind: "tick:start"; ts: number; tick: number }
-  | { kind: "tick:complete"; ts: number; tick: number; duration_ms: number; state: SimulationState; actions: AgentAction[] }
+  | {
+      kind: "tick:complete";
+      ts: number;
+      tick: number;
+      duration_ms: number;
+      state: SimulationState;
+      actions: AgentAction[];
+      /** Per-tick LLM usage drained after batch completes. Omitted if the client doesn't report. */
+      llmUsage?: LLMUsage;
+    }
   | { kind: "agent:action"; ts: number; tick: number; action: AgentAction }
-  | { kind: "sim:complete"; ts: number; simId: string; status: SimStatus; totalTicks: number }
+  | {
+      kind: "sim:complete";
+      ts: number;
+      simId: string;
+      status: SimStatus;
+      totalTicks: number;
+      /** Cumulative LLM usage across the whole run. Omitted if the client doesn't report. */
+      llmUsage?: LLMUsage;
+    }
   | { kind: "sim:death_spiral"; ts: number; simId: string; tick: number }
   | { kind: "report:start"; ts: number; simId: string }
   | { kind: "report:ready"; ts: number; simId: string; resilienceScore: number; resilienceGrade: string }
@@ -80,6 +98,7 @@ export class EventWriter {
       duration_ms: result.duration_ms,
       state: result.stateAfter,
       actions: result.actions,
+      llmUsage: result.llmUsage,
     });
   }
 

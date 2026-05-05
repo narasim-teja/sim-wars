@@ -19,6 +19,11 @@ import {
   DEFAULT_TARGET_RULES,
   type VisibilityRule,
 } from "./visibility";
+import {
+  pickActiveAgents,
+  parseActivationPolicy,
+  type ActivationPolicy,
+} from "./activation";
 
 /**
  * Progress event emitted by `AgentOrchestrator.init()` during the on-chain
@@ -43,6 +48,7 @@ export class AgentOrchestrator {
   private memory: MemoryStore;
   private visibilityRules: VisibilityRule[];
   private targetRules: Record<string, { delay: number; fidelity: number }>;
+  private activationPolicy: ActivationPolicy;
   private pendingUnstakes: Map<string, { amount: number; readyTick: number; requestTx: string }> = new Map();
   /**
    * Map of localProposalId → { chainProposalId, txSig }.
@@ -62,6 +68,7 @@ export class AgentOrchestrator {
     memory: MemoryStore = new InMemoryStore(),
     visibilityRules: VisibilityRule[] = DEFAULT_VISIBILITY_RULES,
     targetRules: Record<string, { delay: number; fidelity: number }> = DEFAULT_TARGET_RULES,
+    activationPolicy: ActivationPolicy = parseActivationPolicy(process.env.SIM_ACTIVATION_POLICY),
   ) {
     this.memory = memory;
     this.llm = llm;
@@ -71,6 +78,7 @@ export class AgentOrchestrator {
     this.chain = chain;
     this.visibilityRules = visibilityRules;
     this.targetRules = targetRules;
+    this.activationPolicy = activationPolicy;
 
     this.orderedPersonaIds = orderAgentsForObservation(personas).map((p) => p.id);
 
@@ -253,11 +261,17 @@ export class AgentOrchestrator {
    */
   async processTickBatch(
     sim: SimulationState,
-    // 12 is a comfortable concurrency for OpenRouter — empirically a 50-agent
-    // tick now lands in ~12s instead of ~130s. If your provider rate-limits
-    // hard, drop this back to 3-5. Configurable via SIM_BATCH_SIZE env var
-    // when set; otherwise falls back to this default.
-    batchSize: number = Math.max(1, Number(process.env.SIM_BATCH_SIZE) || 12)
+    // OpenRouter handles 50 concurrent calls per the rate-limit spike with
+    // zero 429s, so batchSize=24 is a comfortable default — 100-agent ticks
+    // land in ~3-6s vs ~12s at batchSize=12. Configurable via SIM_BATCH_SIZE
+    // env var. If your provider rate-limits hard, drop this back to 3-5.
+    batchSize: number = Math.max(1, Number(process.env.SIM_BATCH_SIZE) || 24),
+    // Pipeline mode (opt-in via SIM_PIPELINE=1). Dispatches all batches in
+    // parallel up to maxInFlight concurrent batches. Trade-off: within-tick
+    // observation propagation (e.g. INSIDER seeing TREASURY same-tick at
+    // delay=0) becomes a next-tick observation. Worth it at 1k+ agents
+    // where sequential batches dominate latency.
+    pipeline: boolean = process.env.SIM_PIPELINE === "1",
   ): Promise<AgentAction[]> {
     // Drain any delayed observations whose visibility tick has arrived.
     this.memory.advanceTick(sim.tick);
@@ -267,60 +281,184 @@ export class AgentOrchestrator {
       .filter((a): a is AgentState => !!a);
     const allActions: AgentAction[] = [];
 
-    for (let i = 0; i < agentList.length; i += batchSize) {
-      const batch = agentList.slice(i, i + batchSize);
-
-      // Build prompts for this batch, tagged with complexity for boost routing
-      const prompts: LLMBatchItem[] = batch.map((agent) => ({
+    // Activation policy decides which agents reason via LLM this tick.
+    // Inactive agents emit a synthetic hold so on-chain settlement, memory,
+    // and observation propagation all stay correct.
+    const activeAgents = pickActiveAgents(agentList, sim, this.activationPolicy, this.simId);
+    const activeIds = new Set(activeAgents.map((a) => a.persona.id));
+    for (const agent of agentList) {
+      if (activeIds.has(agent.persona.id)) continue;
+      const action: AgentAction = {
+        tick: sim.tick,
         agentId: agent.persona.id,
-        prompt: buildAgentPrompt(agent, sim),
-        complexity: agent.persona.complexity ?? "standard",
-      }));
+        action: "hold",
+        amount: null,
+        reasoning: "inactive_tick",
+        threatAssessment: "none",
+        txSignature: null,
+        success: true,
+        timestamp: Date.now(),
+      };
+      allActions.push(action);
+      this.memory.recordAction(agent.persona.id, action);
+      agent.memory = this.memory.getRecentActions(agent.persona.id, 20);
+      this.db.insertAction(this.simId, action);
+      this.db.insertAgentState(this.simId, sim.tick, agent.persona.id, agent.holdings);
+    }
 
-      // Run LLM calls in parallel
-      const responses = await this.llm.generateBatch(prompts);
-
-      // Process each response
-      for (const agent of batch) {
-        const llmResponse = responses.get(agent.persona.id) || {
-          action: "hold" as ActionType,
-          amount: null,
-          reasoning: "no_response",
-          threat_assessment: "none",
-        };
-
-        // Validate and execute
-        const validated = this.validateAction(agent, llmResponse);
-        const action = await this.executeAction(agent, validated, sim);
-        allActions.push(action);
-
-        // Update agent memory via the store (single source of truth)
-        this.memory.recordAction(agent.persona.id, action);
-        agent.memory = this.memory.getRecentActions(agent.persona.id, 20);
-
-        // Persist to DB
-        this.db.insertAction(this.simId, action);
-        this.db.insertAgentState(this.simId, sim.tick, agent.persona.id, agent.holdings);
-      }
-
-      // Update observed actions for subsequent batches, honoring visibility rules.
-      for (const action of allActions.slice(-batch.length)) {
-        if (action.action === "hold") continue;
-        for (const observer of agentList) {
-          if (observer.persona.id === action.agentId) continue;
-          const { delay, fidelity, action: shaped } = resolveVisibility(
-            observer.persona.id,
-            action,
-            this.visibilityRules,
-            this.targetRules,
-          );
-          this.memory.recordObservation(observer.persona.id, shaped, { delay, fidelity });
-          observer.observedActions = this.memory.getRecentObservations(observer.persona.id, 10);
-        }
-      }
+    if (pipeline) {
+      await this.runPipelinedBatches(activeAgents, agentList, sim, batchSize, allActions);
+    } else {
+      await this.runSequentialBatches(activeAgents, agentList, sim, batchSize, allActions);
     }
 
     return allActions;
+  }
+
+  /**
+   * Sequential batch dispatch — one batch at a time. Each batch's actions
+   * become observable to subsequent batches THIS tick, honoring delay=0
+   * visibility rules (e.g. INSIDER → TREASURY same-tick front-running).
+   *
+   * Latency: O(N / batchSize) round-trips per tick. Use for fidelity-sensitive
+   * runs (LUNA backtests, smaller agent counts).
+   */
+  private async runSequentialBatches(
+    activeAgents: AgentState[],
+    agentList: AgentState[],
+    sim: SimulationState,
+    batchSize: number,
+    allActions: AgentAction[],
+  ): Promise<void> {
+    for (let i = 0; i < activeAgents.length; i += batchSize) {
+      const batch = activeAgents.slice(i, i + batchSize);
+      const prompts = this.buildBatchPrompts(batch, sim);
+      const responses = await this.llm.generateBatch(prompts);
+      const batchActions = await this.commitBatchResponses(batch, responses, sim);
+      allActions.push(...batchActions);
+      this.propagateObservations(batchActions, agentList);
+    }
+  }
+
+  /**
+   * Pipelined batch dispatch — fires all batches concurrently up to
+   * `maxInFlight` (env: SIM_MAX_INFLIGHT, default 4). Builds every prompt
+   * upfront, awaits all responses, then commits and propagates observations
+   * once.
+   *
+   * Trade-off: within-tick observation propagation is lost. Actions taken
+   * by one batch are NOT visible to other batches this tick — the visibility
+   * model treats them as next-tick observations regardless of delay=0 rules.
+   * This is acceptable for swarm-1k+ runs where the latency win matters
+   * more than the front-running fidelity of one or two persona pairs.
+   */
+  private async runPipelinedBatches(
+    activeAgents: AgentState[],
+    agentList: AgentState[],
+    sim: SimulationState,
+    batchSize: number,
+    allActions: AgentAction[],
+  ): Promise<void> {
+    const maxInFlight = Math.max(1, Number(process.env.SIM_MAX_INFLIGHT) || 4);
+    const batches: AgentState[][] = [];
+    for (let i = 0; i < activeAgents.length; i += batchSize) {
+      batches.push(activeAgents.slice(i, i + batchSize));
+    }
+
+    // Build all prompts upfront; per-tick state was already snapshot in `sim`,
+    // so building before any responses land is safe.
+    const batchPrompts = batches.map((b) => this.buildBatchPrompts(b, sim));
+
+    // Sliding-window dispatcher: keep up to maxInFlight batches in flight.
+    const responsesPerBatch: Map<string, LLMResponse>[] = new Array(batches.length);
+    let nextIndex = 0;
+    const inFlight = new Set<Promise<void>>();
+    while (nextIndex < batches.length || inFlight.size > 0) {
+      while (inFlight.size < maxInFlight && nextIndex < batches.length) {
+        const idx = nextIndex++;
+        const p = this.llm.generateBatch(batchPrompts[idx]!).then((r) => {
+          responsesPerBatch[idx] = r;
+          inFlight.delete(p);
+        });
+        inFlight.add(p);
+      }
+      if (inFlight.size > 0) await Promise.race(inFlight);
+    }
+
+    // Commit responses in deterministic batch order so action ordering in
+    // `allActions` and DB persistence stays reproducible across runs.
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]!;
+      const responses = responsesPerBatch[i] ?? new Map<string, LLMResponse>();
+      const batchActions = await this.commitBatchResponses(batch, responses, sim);
+      allActions.push(...batchActions);
+    }
+    this.propagateObservations(allActions, agentList);
+  }
+
+  /** Build LLMBatchItem prompts for a slice of agents. */
+  private buildBatchPrompts(batch: AgentState[], sim: SimulationState): LLMBatchItem[] {
+    return batch.map((agent) => {
+      const { prompt, zones } = buildAgentPrompt(agent, sim);
+      return {
+        agentId: agent.persona.id,
+        prompt,
+        zones,
+        complexity: agent.persona.complexity ?? "standard",
+      };
+    });
+  }
+
+  /**
+   * Validate, execute, persist actions for one batch's responses. Returns
+   * the actions in the order of the input `batch` so callers can append
+   * to `allActions` deterministically.
+   */
+  private async commitBatchResponses(
+    batch: AgentState[],
+    responses: Map<string, LLMResponse>,
+    sim: SimulationState,
+  ): Promise<AgentAction[]> {
+    const out: AgentAction[] = [];
+    for (const agent of batch) {
+      const llmResponse = responses.get(agent.persona.id) || {
+        action: "hold" as ActionType,
+        amount: null,
+        reasoning: "no_response",
+        threat_assessment: "none",
+      };
+      const validated = this.validateAction(agent, llmResponse);
+      const action = await this.executeAction(agent, validated, sim);
+      out.push(action);
+
+      this.memory.recordAction(agent.persona.id, action);
+      agent.memory = this.memory.getRecentActions(agent.persona.id, 20);
+      this.db.insertAction(this.simId, action);
+      this.db.insertAgentState(this.simId, sim.tick, agent.persona.id, agent.holdings);
+    }
+    return out;
+  }
+
+  /**
+   * Apply visibility rules to propagate the actions just-committed to all
+   * observers. Honors delay/fidelity per resolveVisibility — delay=0 lands
+   * THIS tick, delay>=1 surfaces on a future tick via memory.advanceTick.
+   */
+  private propagateObservations(actions: AgentAction[], agentList: AgentState[]): void {
+    for (const action of actions) {
+      if (action.action === "hold") continue;
+      for (const observer of agentList) {
+        if (observer.persona.id === action.agentId) continue;
+        const { delay, fidelity, action: shaped } = resolveVisibility(
+          observer.persona.id,
+          action,
+          this.visibilityRules,
+          this.targetRules,
+        );
+        this.memory.recordObservation(observer.persona.id, shaped, { delay, fidelity });
+        observer.observedActions = this.memory.getRecentObservations(observer.persona.id, 10);
+      }
+    }
   }
 
   /**

@@ -53,4 +53,54 @@ describe("RoutingLLMClient", () => {
     expect(results.get("X")?.reasoning).toBe("primary");
     expect(boost.calls).toHaveLength(0);
   });
+
+  it("routes reasoning personas to a third tier when configured", async () => {
+    const primary = new MockProvider({ fallback: { ...buyResp, reasoning: "primary" } });
+    const boost = new MockProvider({ fallback: { ...buyResp, reasoning: "boost" } });
+    const reasoning = new MockProvider({ fallback: { ...buyResp, reasoning: "reasoning" } });
+    const router = new RoutingLLMClient(primary, { primary, boost, reasoning });
+
+    const results = await router.generateBatch([
+      { agentId: "DEGEN", prompt: "p", complexity: "fast" },
+      { agentId: "WHALE", prompt: "p", complexity: "reasoning" },
+      { agentId: "HOLDER", prompt: "p", complexity: "standard" },
+    ]);
+
+    expect(results.get("DEGEN")?.reasoning).toBe("boost");
+    expect(results.get("WHALE")?.reasoning).toBe("reasoning");
+    expect(results.get("HOLDER")?.reasoning).toBe("primary");
+
+    expect(primary.calls.map((c) => c.agentId)).toEqual(["HOLDER"]);
+    expect(boost.calls.map((c) => c.agentId)).toEqual(["DEGEN"]);
+    expect(reasoning.calls.map((c) => c.agentId)).toEqual(["WHALE"]);
+  });
+
+  it("falls reasoning items through to primary when reasoning tier is absent", async () => {
+    const primary = new MockProvider({ fallback: { ...buyResp, reasoning: "primary" } });
+    const boost = new MockProvider({ fallback: { ...buyResp, reasoning: "boost" } });
+    const router = new RoutingLLMClient(primary, { primary, boost });
+
+    const results = await router.generateBatch([
+      { agentId: "WHALE", prompt: "p", complexity: "reasoning" },
+    ]);
+    expect(results.get("WHALE")?.reasoning).toBe("primary");
+    expect(primary.calls.map((c) => c.agentId)).toEqual(["WHALE"]);
+  });
+
+  it("aggregates drainUsage across all configured tiers", async () => {
+    const primary = new MockProvider({ fallback: buyResp });
+    const boost = new MockProvider({ fallback: buyResp });
+    const reasoning = new MockProvider({ fallback: buyResp });
+    const router = new RoutingLLMClient(primary, { primary, boost, reasoning });
+
+    await router.generateBatch([
+      { agentId: "A", prompt: "p", complexity: "fast" },
+      { agentId: "B", prompt: "p", complexity: "standard" },
+      { agentId: "C", prompt: "p", complexity: "reasoning" },
+      { agentId: "D", prompt: "p", complexity: "standard" },
+    ]);
+
+    const usage = router.drainUsage();
+    expect(usage.calls).toBe(4);
+  });
 });

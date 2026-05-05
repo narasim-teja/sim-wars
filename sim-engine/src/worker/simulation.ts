@@ -5,7 +5,8 @@ import { SimDatabase } from "../db/database";
 import { StablecoinMechanismController } from "../scenarios/stablecoin-controller";
 import { ChainExecutor } from "../chain/action-executor";
 import { computeCoordinationEdges } from "../metrics/coordination";
-import type { LLMClient } from "../llm/types";
+import type { LLMClient, LLMUsage } from "../llm/types";
+import { ZERO_USAGE, addUsage } from "../llm/types";
 import type { SimulationConfig, AgentPersona, TickConfig, TickResult, AgentAction } from "../types";
 
 export interface RunSimulationOptions {
@@ -25,7 +26,7 @@ export interface RunSimulationOptions {
   /** Called if the run trips the death-spiral threshold. */
   onDeathSpiral?: (tick: number) => void;
   /** Called right before the function resolves. */
-  onComplete?: (summary: { totalTicks: number; deathSpiralDetected: boolean; finalPrice: number; initialPrice: number }) => void;
+  onComplete?: (summary: { totalTicks: number; deathSpiralDetected: boolean; finalPrice: number; initialPrice: number; llmUsage: LLMUsage }) => void;
   /** Return `true` between ticks to pause, `false` to proceed, `"abort"` to stop. */
   shouldPause?: () => Promise<false | true | "abort"> | (false | true | "abort");
   /** Called during the on-chain pre-stake phase. Worker forwards to IPC. */
@@ -39,6 +40,8 @@ export interface RunSimulationResult {
   deathSpiralAtTick: number | null;
   finalPrice: number;
   initialPrice: number;
+  /** Aggregate LLM usage across all ticks. ZERO_USAGE if the client doesn't report. */
+  llmUsage: LLMUsage;
 }
 
 /**
@@ -79,6 +82,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
   let deathSpiralDetected = false;
   let deathSpiralAtTick: number | null = null;
   let lastCompletedTick = 0;
+  let totalLlmUsage: LLMUsage = { ...ZERO_USAGE };
   // Track whether per-tick fund_reward_vault hit its first failure so we
   // log it once instead of every tick after the deployer ATA empties.
   let emissionsBroken = false;
@@ -180,6 +184,8 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     }
 
     const actions = await orchestrator.processTickBatch(state);
+    const llmUsage = llm.drainUsage?.();
+    if (llmUsage) totalLlmUsage = addUsage(totalLlmUsage, llmUsage);
 
     // Track recent actions for coordination detection (sliding window).
     recentActions.push(...actions);
@@ -205,7 +211,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     db.insertTickState(simId, tickNum, state, elapsed);
     lastCompletedTick = tickNum;
 
-    const result: TickResult = { tick: tickNum, actions, stateAfter: state, duration_ms: elapsed };
+    const result: TickResult = { tick: tickNum, actions, stateAfter: state, duration_ms: elapsed, llmUsage };
     opts.onTickComplete?.(result);
     tick.markTickComplete(result);
 
@@ -239,6 +245,7 @@ export async function runSimulation(opts: RunSimulationOptions): Promise<RunSimu
     deathSpiralAtTick,
     finalPrice,
     initialPrice,
+    llmUsage: totalLlmUsage,
   };
   opts.onComplete?.(summary);
   return summary;

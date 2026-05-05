@@ -138,6 +138,16 @@ export interface AgentPersona {
    * - "reasoning"  → primary model, larger max_tokens (coordinated attackers)
    */
   complexity?: "fast" | "standard" | "reasoning";
+  /**
+   * Per-tick LLM activation probability in [0, 1]. Lower means the agent
+   * is dormant most ticks (no prompt built, no LLM call) and contributes
+   * a default "hold" action. Modeled after OASIS's activation probability:
+   * real markets are dominated by a small share of active wallets at any
+   * moment. Default 1.0 (always active) preserves prior behavior; the
+   * orchestrator's activation policy may further modulate this by
+   * market volatility. Undefined treated as 1.0.
+   */
+  activation?: number;
 }
 
 export interface AgentState {
@@ -231,6 +241,12 @@ export interface TickResult {
   actions: AgentAction[];
   stateAfter: SimulationState;
   duration_ms: number;
+  /**
+   * LLM usage for this tick — drained from the orchestrator's client after
+   * the batch completes. Undefined when the client doesn't report usage
+   * (mock provider in some tests).
+   */
+  llmUsage?: import("./llm/types").LLMUsage;
 }
 
 // ============================================================

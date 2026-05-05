@@ -1,5 +1,6 @@
 import type { LLMResponse } from "../../types";
-import type { LLMClient, LLMBatchItem, LLMGenerateOptions } from "../types";
+import type { LLMClient, LLMBatchItem, LLMGenerateOptions, LLMUsage } from "../types";
+import { ZERO_USAGE } from "../types";
 import { DEFAULT_HOLD } from "../parse";
 
 export type MockDecider = (args: { agentId: string; prompt: string }) => LLMResponse;
@@ -34,6 +35,7 @@ export class MockProvider implements LLMClient {
   private rawDecide?: (prompt: string) => string;
 
   public calls: { agentId: string; prompt: string }[] = [];
+  private callsSinceDrain = 0;
 
   constructor(opts: MockProviderOptions = {}) {
     this.scripted = opts.scripted ?? new Map();
@@ -43,16 +45,21 @@ export class MockProvider implements LLMClient {
     this.rawDecide = opts.rawDecide;
   }
 
+  private recordCall(agentId: string, prompt: string): void {
+    this.calls.push({ agentId, prompt });
+    this.callsSinceDrain += 1;
+  }
+
   async generate(prompt: string, _opts?: LLMGenerateOptions): Promise<LLMResponse> {
     if (this.latencyMs > 0) await Bun.sleep(this.latencyMs);
-    this.calls.push({ agentId: "__raw__", prompt });
+    this.recordCall("__raw__", prompt);
     if (this.decide) return this.decide({ agentId: "__raw__", prompt });
     return { ...this.fallback };
   }
 
   async generateRaw(prompt: string, _opts?: LLMGenerateOptions): Promise<string> {
     if (this.latencyMs > 0) await Bun.sleep(this.latencyMs);
-    this.calls.push({ agentId: "__raw__", prompt });
+    this.recordCall("__raw__", prompt);
     if (this.rawDecide) return this.rawDecide(prompt);
     if (this.decide) return JSON.stringify(this.decide({ agentId: "__raw__", prompt }));
     return JSON.stringify(this.fallback);
@@ -62,7 +69,7 @@ export class MockProvider implements LLMClient {
     const results = new Map<string, LLMResponse>();
     for (const { agentId, prompt } of items) {
       if (this.latencyMs > 0) await Bun.sleep(this.latencyMs);
-      this.calls.push({ agentId, prompt });
+      this.recordCall(agentId, prompt);
       if (this.scripted.has(agentId)) {
         results.set(agentId, { ...this.scripted.get(agentId)! });
       } else if (this.decide) {
@@ -78,7 +85,17 @@ export class MockProvider implements LLMClient {
     return true;
   }
 
+  drainUsage(): LLMUsage {
+    // Mock has no real cost or token data, but it tracks how many calls
+    // happened since the last drain so tests can assert that telemetry
+    // is actually being plumbed through the orchestrator.
+    const drained: LLMUsage = { ...ZERO_USAGE, calls: this.callsSinceDrain };
+    this.callsSinceDrain = 0;
+    return drained;
+  }
+
   clear(): void {
     this.calls = [];
+    this.callsSinceDrain = 0;
   }
 }

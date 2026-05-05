@@ -98,12 +98,36 @@ export type SimStatus =
   | "death_spiral"
   | "interrupted";
 
+export interface LLMUsage {
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+}
+
 export type WorkerEvent =
   | { kind: "sim:start"; ts: number; simId: string; agentCount: number; maxTicks: number }
   | { kind: "tick:start"; ts: number; tick: number }
-  | { kind: "tick:complete"; ts: number; tick: number; duration_ms: number; state: SimulationState; actions: AgentAction[] }
+  | {
+      kind: "tick:complete";
+      ts: number;
+      tick: number;
+      duration_ms: number;
+      state: SimulationState;
+      actions: AgentAction[];
+      llmUsage?: LLMUsage;
+    }
   | { kind: "agent:action"; ts: number; tick: number; action: AgentAction }
-  | { kind: "sim:complete"; ts: number; simId: string; status: SimStatus; totalTicks: number }
+  | {
+      kind: "sim:complete";
+      ts: number;
+      simId: string;
+      status: SimStatus;
+      totalTicks: number;
+      llmUsage?: LLMUsage;
+    }
   | { kind: "sim:death_spiral"; ts: number; simId: string; tick: number }
   | { kind: "report:start"; ts: number; simId: string }
   | { kind: "report:ready"; ts: number; simId: string; resilienceScore: number; resilienceGrade: string }

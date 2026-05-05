@@ -10,6 +10,7 @@ import type {
   LogEntry,
   SimStatus,
   ActionType,
+  LLMUsage,
 } from "@/lib/types";
 import { agentTypeFromId } from "@/lib/agent-colors";
 
@@ -22,6 +23,25 @@ export interface SimSeriesPoint {
   pegPrice: number;
   apy: number;
 }
+
+export interface CostSeriesPoint {
+  tick: number;
+  /** Cumulative USD spent through this tick. */
+  cumulativeCost: number;
+  /** Just this tick's USD spend. */
+  tickCost: number;
+  /** Just this tick's call count. */
+  tickCalls: number;
+}
+
+const ZERO_USAGE: LLMUsage = {
+  calls: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  cachedTokens: 0,
+  cacheWriteTokens: 0,
+  costUsd: 0,
+};
 
 export interface SimUiState {
   /** Connection lifecycle. WS may take a moment to open after the page loads. */
@@ -59,6 +79,12 @@ export interface SimUiState {
    * during the otherwise-silent ~5-10s window between deploy and tick 0.
    */
   prestake: { current: number; total: number; succeeded: number; failed: number } | null;
+  /** Latest tick's LLM usage. Zero-init until the first tick:complete with usage. */
+  lastTickUsage: LLMUsage;
+  /** Cumulative LLM usage across all ticks. Final value sourced from sim:complete when available. */
+  totalUsage: LLMUsage;
+  /** Per-tick cost timeline for the sparkline. Capped to last 200 ticks. */
+  costSeries: CostSeriesPoint[];
 }
 
 const SERIES_CAP = 200;
@@ -97,6 +123,20 @@ function initialState(): SimUiState {
     chainDeploying: false,
     chainDeployStatus: null,
     prestake: null,
+    lastTickUsage: { ...ZERO_USAGE },
+    totalUsage: { ...ZERO_USAGE },
+    costSeries: [],
+  };
+}
+
+function addUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
+  return {
+    calls: a.calls + b.calls,
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+    cachedTokens: a.cachedTokens + b.cachedTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+    costUsd: a.costUsd + b.costUsd,
   };
 }
 
@@ -204,6 +244,20 @@ function reducer(state: SimUiState, action: Action): SimUiState {
         `tick ${tick} · ${actions.length} agents acted · price $${simState.tokenPrice.toFixed(4)} · gini ${simState.giniCoefficient.toFixed(3)}`,
       );
 
+      const tickUsage = ev.llmUsage ?? ZERO_USAGE;
+      const totalUsage = ev.llmUsage ? addUsage(state.totalUsage, ev.llmUsage) : state.totalUsage;
+      const costSeries = ev.llmUsage
+        ? [
+            ...state.costSeries,
+            {
+              tick,
+              cumulativeCost: totalUsage.costUsd,
+              tickCost: tickUsage.costUsd,
+              tickCalls: tickUsage.calls,
+            },
+          ].slice(-SERIES_CAP)
+        : state.costSeries;
+
       return {
         ...state,
         tick,
@@ -213,6 +267,9 @@ function reducer(state: SimUiState, action: Action): SimUiState {
         edges,
         feed,
         logs,
+        lastTickUsage: tickUsage,
+        totalUsage,
+        costSeries,
       };
     }
 
@@ -226,11 +283,24 @@ function reducer(state: SimUiState, action: Action): SimUiState {
     }
 
     case "sim:complete": {
+      // Worker may report a slightly more accurate aggregate than our
+      // running per-tick sum (e.g. drains that landed outside the tick:complete
+      // payload). Trust it when present.
+      const totalUsage = ev.llmUsage ?? state.totalUsage;
+      const costSummary =
+        totalUsage.calls > 0
+          ? ` · LLM ${totalUsage.calls} calls · $${totalUsage.costUsd.toFixed(4)}`
+          : "";
       return {
         ...state,
         status: ev.status,
         endedAt: ev.ts,
-        logs: pushLog(state.logs, "system", `simulation ${ev.status} after ${ev.totalTicks} ticks`),
+        totalUsage,
+        logs: pushLog(
+          state.logs,
+          "system",
+          `simulation ${ev.status} after ${ev.totalTicks} ticks${costSummary}`,
+        ),
       };
     }
 
