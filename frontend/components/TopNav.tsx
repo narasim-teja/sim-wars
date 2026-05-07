@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
@@ -42,6 +43,7 @@ export function TopNav({
           </Link>
         )}
         <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo-spiral.svg" alt="" width={22} height={22} priority />
           <span className="font-mono text-base font-semibold tracking-[0.32em] text-zinc-900">
             SIMWARS
           </span>

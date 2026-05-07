@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Sim Wars · Adversarial tokenomics simulation",
   description: "Upload your tokenomics. 20 LLM-powered adversaries stress-test it on Solana devnet.",
+  icons: {
+    icon: "/logo-spiral.svg",
+    shortcut: "/logo-spiral.svg",
+  },
 };
 
 export default function RootLayout({

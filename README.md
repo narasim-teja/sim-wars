@@ -157,12 +157,6 @@ Existing tools fall short: TokenLab uses rule-based ABM, Cenit explicitly doesn'
 
 Solana fits especially well: 400ms blocks map 1:1 to sim ticks, ZK-compressed accounts for cheap 1000+ agent wallets, Yellowstone gRPC for real-time observation, and Anchor program compatibility means a protocol team can hand us their unchanged programs and we deploy them on devnet with agents attacking them.
 
-## Hackathon track
-
-**RFB 4 — Emergent Agent Economies.** Agents with different goals interact in a real-money Solana environment; the platform surfaces the emergent structures.
-
-Also touches **RFB 1 (Discovery/Reputation)** — agents build on-chain interaction history that downstream consumers can score — and **RFB 5 (Multi-Agent Orchestration)** — sybil rings and governance attackers coordinate inside a single sim.
-
 ## Repo layout
 
 ```
@@ -197,36 +191,3 @@ Production-relevant env vars (full list in [docs/deploy-handoff.md](docs/deploy-
 | `SIM_PIPELINE` | (unset) | `1` enables pipelined batch dispatch (sacrifices delay-0 visibility) |
 | `SIM_MAX_INFLIGHT` | `4` | Concurrent batches under pipeline mode |
 | `SIM_MAX_AGENTS` | `5000` | Hard ceiling enforced in API |
-
-## Roadmap (v2)
-
-- **Solana on-chain on devnet** — shared pre-deployed programs (hackathon-essential, see deploy-handoff §6.1)
-- **Re-record a real LUNA death-spiral demo** for narrative contrast against the surviving-protocol demos
-- **Paced replay** — `?speed=Nx` for the demo player
-- **Image slimming** — Next.js `output: "standalone"`, drop `pdfjs-dist` from runtime stage (1.47 GB → ~500 MB target)
-- **GitHub Actions auto-deploy** with AWS OIDC
-- **S3-backed run archive** + community `/runs` page
-- **Cost-meter polish** — distinguish "live cost" from "replay of past cost"
-- **Persona trait-vector diversity** — see scaling-handoff §6.3
-
-Full backlog in [docs/deploy-handoff.md](docs/deploy-handoff.md) §6.
-
-## Documentation
-
-- **[docs/deploy-handoff.md](docs/deploy-handoff.md)** — production deploy state, AWS infrastructure, BYOK contract, container shape, v2 backlog. Read this first if you're picking up the project.
-- **[docs/scaling-handoff.md](docs/scaling-handoff.md)** — LLM/agent path: prompt zoning, cache lanes, activation policies, three-tier routing, empirical cost/latency numbers from 8/100/1000-agent runs.
-- **[docs/plan.md](docs/plan.md)** + **[docs/autonomy-plan.md](docs/autonomy-plan.md)** — earlier planning artifacts.
-
-## Contributing
-
-The repo is structured to make adding new agent personas, scenarios, and LLM providers straightforward:
-
-- **New persona** → drop a `systemPrompt` + traits into [`sim-engine/src/agents/personas/`](sim-engine/src/agents/personas) and register in the roster expander.
-- **New scenario** → copy [`sim-engine/scenarios/luna-ust.ts`](sim-engine/scenarios/luna-ust.ts), edit the `SimulationConfig`, run with `bun run src/index.ts ../scenarios/<name>.ts`.
-- **New LLM provider** → implement [`LLMClient`](sim-engine/src/llm/types.ts) (`generate`, `generateBatch`, `generateRaw`, `drainUsage`). MockProvider in [`sim-engine/src/llm/providers/mock-provider.ts`](sim-engine/src/llm/providers/mock-provider.ts) is the reference shape.
-
-Run `bun test` (85 tests across 18 files) and `bun luna` (LUNA fidelity regression) before opening a PR.
-
-## License
-
-MIT.
