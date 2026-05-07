@@ -1,8 +1,8 @@
 import "../bootstrap";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, open, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, open, appendFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn, type Subprocess } from "bun";
-import { pathsFor, RUNS_DIR } from "../ipc/paths";
+import { pathsFor, resolveRunPaths, isDemoRun, RUNS_DIR, DEMO_RUNS_DIR } from "../ipc/paths";
 import { writeCommand } from "../ipc/command-reader";
 import type { SimulationConfig, AgentPersona, TickConfig } from "../types";
 import type { StatusSnapshot } from "../ipc/event-writer";
@@ -26,7 +26,10 @@ interface SpawnedRun {
 const runs = new Map<string, SpawnedRun>();
 const wsClients = new Map<string, Set<{ send: (data: string) => void }>>(); // simId → sockets
 
-const PORT = Number(process.env.PORT ?? 8787);
+// SIM_API_PORT takes precedence so we can override on platforms that
+// reserve PORT for their own use (AWS App Runner injects PORT to match
+// its forward-port and silently ignores attempts to override it).
+const PORT = Number(process.env.SIM_API_PORT ?? process.env.PORT ?? 8787);
 const WORKER_SCRIPT = resolve(import.meta.dir, "../worker/main.ts");
 const DEPLOY_SCRIPT = resolve(import.meta.dir, "../../scripts/deploy-from-config.ts");
 
@@ -71,12 +74,57 @@ interface CreateSimBody {
   extractedFields?: string[];
   tickConfig: TickConfig;
   onChain?: boolean;
+  /**
+   * Bring-your-own OpenRouter key. Forwarded to the spawned worker process
+   * via env, never persisted to scenario.json or any log line. When the
+   * server is started with `SIM_REQUIRE_BYOK=1` (production mode) this is
+   * the only way to launch a non-demo run.
+   */
+  byokOpenRouterKey?: string;
+}
+
+const REQUIRE_BYOK = process.env.SIM_REQUIRE_BYOK === "1";
+const DISABLE_ONCHAIN = process.env.SIM_DISABLE_ONCHAIN === "1";
+
+function isPlausibleOpenRouterKey(k: unknown): k is string {
+  return typeof k === "string" && /^sk-or-[a-z0-9-]+$/i.test(k.trim()) && k.length <= 200;
 }
 
 async function handleCreate(req: Request): Promise<Response> {
   const body = (await req.json()) as CreateSimBody;
   if (!body.config || !body.tickConfig) {
     return json({ error: "config and tickConfig are required" }, { status: 400 });
+  }
+
+  // BYOK: validate the OpenRouter key shape, then keep it ONLY in this
+  // function's local scope. The persisted scenario.json never sees it; we
+  // forward it to the spawned worker via env so it dies with the process.
+  let byokKey: string | undefined;
+  if (body.byokOpenRouterKey != null) {
+    if (!isPlausibleOpenRouterKey(body.byokOpenRouterKey)) {
+      return json(
+        { error: "byokOpenRouterKey must look like an OpenRouter key (sk-or-...)" },
+        { status: 400, headers: corsHeaders() },
+      );
+    }
+    byokKey = body.byokOpenRouterKey.trim();
+  }
+  if (REQUIRE_BYOK && !byokKey) {
+    return json(
+      {
+        error:
+          "this server requires a bring-your-own OpenRouter key. " +
+          "Pass `byokOpenRouterKey` in the request body. " +
+          "Get a key at https://openrouter.ai/keys",
+      },
+      { status: 402, headers: corsHeaders() },
+    );
+  }
+  if (DISABLE_ONCHAIN && body.onChain) {
+    return json(
+      { error: "on-chain runs are disabled on this deployment (SIM_DISABLE_ONCHAIN=1)" },
+      { status: 400, headers: corsHeaders() },
+    );
   }
   // Worker treats `maxTicks=0` as "run forever" but in practice it short-
   // circuits to 0 ticks completed and ships an empty F-grade report —
@@ -168,11 +216,14 @@ async function handleCreate(req: Request): Promise<Response> {
 
   // Persist the resolved roster + normalized config, not the request body, so
   // worker + deploy script see the exact same shape the API committed to.
+  // CRITICAL: strip `byokOpenRouterKey` so it never lands on disk. The key
+  // travels in-memory to the worker via spawn env and dies with the process.
   const persistedBody: CreateSimBody = {
     ...body,
     config: normalizedConfig,
     agents: resolvedAgents,
   };
+  delete persistedBody.byokOpenRouterKey;
 
   const paths = pathsFor(simId);
   mkdirSync(paths.commandsDir, { recursive: true });
@@ -187,11 +238,16 @@ async function handleCreate(req: Request): Promise<Response> {
   // gap between deploy + worker spawn can subscribe and tail events.
   runs.set(simId, { simId, process: null, startedAt: Date.now(), eventsOffset: 0 });
 
+  // Per-run env passed to the worker subprocess. The BYOK key lives ONLY here
+  // and in the spawned process — it goes away when the worker exits.
+  const workerEnv: Record<string, string> = {};
+  if (byokKey) workerEnv.OPENROUTER_API_KEY = byokKey;
+
   if (body.onChain) {
     // Fire-and-forget the deploy → worker chain. The HTTP response returns
     // immediately so the frontend can subscribe to /ws/sim/:id and watch
     // the chain:deploy:* events stream in.
-    runDeployThenWorker(simId, persistedBody, deploymentPlan).catch((err) => {
+    runDeployThenWorker(simId, persistedBody, deploymentPlan, workerEnv).catch((err) => {
       appendEvent(paths.eventsFile, {
         kind: "chain:deploy:error",
         ts: Date.now(),
@@ -204,7 +260,7 @@ async function handleCreate(req: Request): Promise<Response> {
       );
     });
   } else {
-    spawnWorker(simId);
+    spawnWorker(simId, workerEnv);
   }
 
   return json(
@@ -237,6 +293,7 @@ async function runDeployThenWorker(
   simId: string,
   body: CreateSimBody,
   plan: { programs: { staking: boolean; governance: boolean } },
+  workerEnv: Record<string, string> = {},
 ): Promise<void> {
   const paths = pathsFor(simId);
   appendEvent(paths.eventsFile, { kind: "chain:deploy:start", ts: Date.now(), simId, step: "starting" });
@@ -293,7 +350,7 @@ async function runDeployThenWorker(
     kind: "chain:deploy:complete", ts: Date.now(), simId, programs,
   });
 
-  spawnWorker(simId, { CHAIN_DEPLOYMENT: perRunDeploymentPath(simId) });
+  spawnWorker(simId, { ...workerEnv, CHAIN_DEPLOYMENT: perRunDeploymentPath(simId) });
 }
 
 async function streamToEvents(
@@ -324,6 +381,12 @@ async function streamToEvents(
 }
 
 function handleCommand(simId: string, type: "pause" | "resume" | "abort"): Response {
+  if (isDemoRun(simId)) {
+    return json(
+      { error: "demo runs are read-only — pause/resume/abort have no effect" },
+      { status: 409, headers: corsHeaders() },
+    );
+  }
   const run = runs.get(simId);
   if (!run) return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
   const paths = pathsFor(simId);
@@ -332,14 +395,17 @@ function handleCommand(simId: string, type: "pause" | "resume" | "abort"): Respo
 }
 
 function handleStatus(simId: string): Response {
-  const paths = pathsFor(simId);
+  const paths = resolveRunPaths(simId);
   if (!existsSync(paths.statusFile)) return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
   const snap = JSON.parse(readFileSync(paths.statusFile, "utf-8")) as StatusSnapshot;
-  return json({ ...snap, hasReport: existsSync(paths.reportFile) }, { headers: corsHeaders() });
+  return json(
+    { ...snap, hasReport: existsSync(paths.reportFile), isDemo: isDemoRun(simId) },
+    { headers: corsHeaders() },
+  );
 }
 
 function handleReport(simId: string): Response {
-  const paths = pathsFor(simId);
+  const paths = resolveRunPaths(simId);
   if (!existsSync(paths.statusFile)) {
     return json({ error: "unknown simId" }, { status: 404, headers: corsHeaders() });
   }
@@ -348,6 +414,100 @@ function handleReport(simId: string): Response {
   }
   const report = JSON.parse(readFileSync(paths.reportFile, "utf-8"));
   return json(report, { headers: corsHeaders() });
+}
+
+/**
+ * Demo metadata served from a hand-curated table. Demo runs are read-only
+ * NDJSON recordings baked into the image; this endpoint exposes a
+ * friendly card-list to the frontend.
+ */
+interface DemoCard {
+  simId: string;
+  name: string;
+  description: string;
+  status: string;
+  totalTicks: number;
+  resilienceScore: number | null;
+  resilienceGrade: string | null;
+  deathSpiralDetected: boolean;
+}
+
+const DEMO_METADATA: Record<string, { name: string; description: string }> = {
+  "4cc74be3-fb86-44d5-982d-a6df44a2b68c": {
+    name: "Curve veCRV — sustainable lock",
+    description:
+      "4-year locked veToken design with fee-funded rewards. Shrugs off whale stress, governance attacks, and treasury raids; price wobbles but the lock kills the immediate-unstake-then-sell loop.",
+  },
+  "b3c55764-eef8-4e1b-8970-c6305d85f5f8": {
+    name: "Uniswap UNI — community float",
+    description:
+      "60% community allocation with team/investor vesting. Governance survives quorum probes; price recovers after a coordinated dump because there's no peg or yield trap to amplify the move.",
+  },
+};
+
+function handleDemos(): Response {
+  if (!existsSync(DEMO_RUNS_DIR)) {
+    return json({ demos: [] }, { headers: corsHeaders() });
+  }
+  const demos: DemoCard[] = [];
+  for (const entry of readdirSync(DEMO_RUNS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const simId = entry.name;
+    const paths = pathsFor(simId, DEMO_RUNS_DIR);
+    if (!existsSync(paths.statusFile)) continue;
+    const snap = JSON.parse(readFileSync(paths.statusFile, "utf-8")) as StatusSnapshot;
+    const meta = DEMO_METADATA[simId] ?? {
+      name: `Demo ${simId.slice(0, 8)}`,
+      description: "Pre-recorded simulation replay.",
+    };
+    let resilienceScore: number | null = null;
+    let resilienceGrade: string | null = null;
+    let deathSpiralDetected = false;
+    let totalTicks = 0;
+    if (existsSync(paths.reportFile)) {
+      try {
+        const report = JSON.parse(readFileSync(paths.reportFile, "utf-8")) as {
+          resilienceScore?: number;
+          resilienceGrade?: string;
+          deathSpiralDetected?: boolean;
+          totalTicks?: number;
+        };
+        resilienceScore = report.resilienceScore ?? null;
+        resilienceGrade = report.resilienceGrade ?? null;
+        deathSpiralDetected = !!report.deathSpiralDetected;
+        totalTicks = report.totalTicks ?? snap.tick;
+      } catch { /* fall through */ }
+    }
+    demos.push({
+      simId,
+      name: meta.name,
+      description: meta.description,
+      status: snap.status,
+      totalTicks,
+      resilienceScore,
+      resilienceGrade,
+      deathSpiralDetected,
+    });
+  }
+  return json({ demos }, { headers: corsHeaders() });
+}
+
+/**
+ * Boot-time scan of `runs-demo/` so demo simIds are registered in the
+ * `runs` map and the WS handler can find them. We point `eventsOffset`
+ * at the file size so the periodic tailer never re-emits — the on-connect
+ * full-replay in `onWsOpen` is the only delivery path for demos.
+ */
+function registerDemos(): void {
+  if (!existsSync(DEMO_RUNS_DIR)) return;
+  for (const entry of readdirSync(DEMO_RUNS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const simId = entry.name;
+    const paths = pathsFor(simId, DEMO_RUNS_DIR);
+    if (!existsSync(paths.eventsFile)) continue;
+    const size = statSync(paths.eventsFile).size;
+    runs.set(simId, { simId, process: null, startedAt: Date.now(), eventsOffset: size });
+  }
 }
 
 async function handleDraftScenario(req: Request): Promise<Response> {
@@ -385,7 +545,9 @@ function handleList(): Response {
 async function tailEvents(simId: string): Promise<void> {
   const run = runs.get(simId);
   if (!run) return;
-  const paths = pathsFor(simId);
+  // Demo runs are pre-registered with `eventsOffset` set to file size so this
+  // is a no-op for them — `onWsOpen` is their only delivery path.
+  const paths = resolveRunPaths(simId);
   if (!existsSync(paths.eventsFile)) return;
   const size = statSync(paths.eventsFile).size;
   if (size <= run.eventsOffset) return;
@@ -418,8 +580,10 @@ function onWsOpen(ws: { data: { simId: string }; send: (d: string) => void }) {
   const { simId } = ws.data;
   if (!wsClients.has(simId)) wsClients.set(simId, new Set());
   wsClients.get(simId)!.add(ws as unknown as { send: (d: string) => void });
-  // On connect, replay full history so the client catches up without polling
-  const paths = pathsFor(simId);
+  // On connect, replay full history so the client catches up without polling.
+  // resolveRunPaths falls back to the read-only `runs-demo/` dir, which is how
+  // baked-in demo recordings get streamed to fresh clients.
+  const paths = resolveRunPaths(simId);
   if (existsSync(paths.eventsFile)) {
     const text = readFileSync(paths.eventsFile, "utf-8");
     for (const line of text.split("\n")) if (line) ws.send(line);
@@ -436,6 +600,7 @@ function onWsClose(ws: { data: { simId: string }; send: (d: string) => void }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 mkdirSync(RUNS_DIR, { recursive: true });
+registerDemos();
 startTailers();
 
 interface WsData {
@@ -470,6 +635,10 @@ const server = Bun.serve<WsData, never>({
 
     if (req.method === "POST" && url.pathname === "/api/sim") {
       return handleCreate(req);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/demos") {
+      return handleDemos();
     }
 
     if (req.method === "POST" && url.pathname === "/api/scenarios/draft") {

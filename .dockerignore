@@ -1,0 +1,42 @@
+# Build artifacts that get re-created in-stage
+**/node_modules
+**/.next
+**/dist
+**/target
+**/.turbo
+**/.cache
+**/*.tsbuildinfo
+
+# Local runtime state — never want this in the image
+sim-engine/.local
+test-ledger
+.anchor
+
+# Local env files
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Secrets / keypairs
+*-keypair.json
+*.key
+deployer.json
+
+# Editor + OS
+.DS_Store
+.vscode
+.idea
+*.log
+
+# Git + CI cruft
+.git
+.github
+.claude
+.agents
+docs
+
+# Anchor build artifacts not needed at runtime
+programs/**/target
+program-tests/target

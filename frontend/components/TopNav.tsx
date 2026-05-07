@@ -51,9 +51,11 @@ export function TopNav({
       {view && onViewChange ? (
         <ViewTabs value={view} onChange={onViewChange} />
       ) : (
-        <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-          Adversarial tokenomics simulator
-        </span>
+        <nav className="flex items-center gap-5 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+          <Link href="/" className="hover:text-zinc-900">Launch</Link>
+          <Link href="/demos" className="hover:text-zinc-900">Demos</Link>
+          <Link href="/about" className="hover:text-zinc-900">About</Link>
+        </nav>
       )}
 
       <div className="flex items-center gap-4">
@@ -66,12 +68,12 @@ export function TopNav({
           </div>
         ) : (
           <a
-            href="https://github.com/anthropics"
+            href="https://github.com/narasim-teja/sim-wars"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500 hover:text-zinc-900"
           >
-            visit our github
+            github
             <ArrowUpRight className="h-3 w-3" />
           </a>
         )}

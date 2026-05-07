@@ -7,9 +7,11 @@ import { HeroIllustration } from "@/components/HeroIllustration";
 import { CustomSource } from "@/components/upload/CustomSource";
 import { ConfigEditor } from "@/components/upload/ConfigEditor";
 import { DeploymentPreview } from "@/components/upload/DeploymentPreview";
+import { ByokDialog } from "@/components/ByokDialog";
 import { previewDeploymentPlan } from "@/lib/deployment-plan";
 import { SCENARIO_PRESETS } from "@/lib/scenarios";
-import { createSim, type RosterPreset } from "@/lib/api";
+import { createSim, type RosterPreset, type CreateSimBody } from "@/lib/api";
+import { getStoredKey, clearStoredKey, isRemembered, maskKey } from "@/lib/byok";
 import {
   AGENT_COUNT_STEPS,
   DEFAULT_AGENT_COUNT,
@@ -49,6 +51,17 @@ export default function Home() {
   const [customEditedFields, setCustomEditedFields] = useState<Set<string>>(new Set());
   const [customMeta, setCustomMeta] = useState<ExtractionOutcome | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+
+  // BYOK state. The key is held in client memory only; persistence (when
+  // toggled) goes through localStorage in `lib/byok.ts`. The server never
+  // logs or persists it (verified by integration test).
+  // Initial value comes from `useState`'s lazy initializer so we bypass the
+  // forbidden setState-in-effect pattern; on SSR `getStoredKey()` returns null.
+  const [byokKey, setByokKey] = useState<string | null>(() => getStoredKey());
+  const [byokOpen, setByokOpen] = useState(false);
+  const [byokRemembered, setByokRemembered] = useState<boolean>(() => isRemembered());
+  // Pending `launch()` resumption — set when launch() opens the dialog.
+  const [pendingLaunch, setPendingLaunch] = useState(false);
 
   const presetScenario = SCENARIO_PRESETS.find((s) => s.id === selected)!;
 
@@ -179,7 +192,7 @@ export default function Home() {
     setEditorOpen(false);
   }, []);
 
-  async function launch() {
+  async function launch(keyOverride?: string) {
     setError(null);
     if (mode === "custom") {
       if (!customConfig) {
@@ -193,6 +206,15 @@ export default function Home() {
     }
     if (agentCount < 1 || agentCount > MAX_AGENTS) {
       setError(`agentCount must be 1–${MAX_AGENTS}`);
+      return;
+    }
+
+    // BYOK gate — production server (SIM_REQUIRE_BYOK=1) refuses runs
+    // without a key. Open the modal and resume the launch from `onByokSubmit`.
+    const effectiveKey = keyOverride ?? byokKey;
+    if (!effectiveKey) {
+      setPendingLaunch(true);
+      setByokOpen(true);
       return;
     }
 
@@ -229,7 +251,7 @@ export default function Home() {
       // Two payload shapes:
       //   - sendStaticRoster: preserve the hand-written preset personas
       //   - else: hand the count + preset to the backend expander
-      const body = sendStaticRoster && activeAgents
+      const baseBody: CreateSimBody = sendStaticRoster && activeAgents
         ? {
             config,
             agents: activeAgents,
@@ -247,12 +269,31 @@ export default function Home() {
             ...extractionMeta,
             ...fieldsBody,
           };
+      // Attach the BYOK key. Server forwards via env to the worker subprocess
+      // and does NOT write it to disk or any log line.
+      const body: CreateSimBody = effectiveKey ? { ...baseBody, byokOpenRouterKey: effectiveKey } : baseBody;
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
     } catch (e) {
       setError((e as Error).message);
       setLaunching(false);
     }
+  }
+
+  function onByokSubmit(key: string) {
+    setByokKey(key);
+    setByokRemembered(isRemembered());
+    if (pendingLaunch) {
+      setPendingLaunch(false);
+      // Pass the key as an override since React state hasn't committed yet.
+      void launch(key);
+    }
+  }
+
+  function onClearKey() {
+    clearStoredKey();
+    setByokKey(null);
+    setByokRemembered(false);
   }
 
   // Agent-type breakdown for the UI: from the static roster when we'd send it,
@@ -564,8 +605,52 @@ export default function Home() {
               />
             )}
 
+            {/* BYOK key strip — visible state of the key the run will use. */}
+            <div
+              className={cn(
+                "flex items-center justify-between gap-3 rounded border px-3 py-2 font-mono text-[11px]",
+                byokKey
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-amber-200 bg-amber-50 text-amber-900",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span className="uppercase tracking-[0.22em]">openrouter key</span>
+                {byokKey ? (
+                  <>
+                    <span className="text-emerald-800">{maskKey(byokKey)}</span>
+                    <span className="text-emerald-700/70 normal-case tracking-normal">
+                      {byokRemembered ? "(remembered)" : "(session only)"}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-amber-800 normal-case tracking-normal">
+                    not set — required for live runs
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                {byokKey && (
+                  <button
+                    type="button"
+                    onClick={onClearKey}
+                    className="cursor-pointer text-emerald-700 hover:text-emerald-900"
+                  >
+                    clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setByokOpen(true)}
+                  className="cursor-pointer text-zinc-700 underline-offset-2 hover:underline"
+                >
+                  {byokKey ? "change" : "set key"}
+                </button>
+              </span>
+            </div>
+
             <button
-              onClick={launch}
+              onClick={() => void launch()}
               disabled={launching || (mode === "custom" && !customReady)}
               className={cn(
                 "mt-2 flex h-12 cursor-pointer items-center justify-center gap-2 rounded bg-zinc-900 font-mono text-[12px] uppercase tracking-[0.25em] text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60",
@@ -607,6 +692,16 @@ export default function Home() {
           <span>Solana devnet · Bun · Anchor 1.0</span>
         </div>
       </footer>
+
+      <ByokDialog
+        open={byokOpen}
+        onOpenChange={(o) => {
+          setByokOpen(o);
+          if (!o) setPendingLaunch(false);
+        }}
+        onSubmit={onByokSubmit}
+        initialKey={byokKey ?? undefined}
+      />
     </div>
   );
 }

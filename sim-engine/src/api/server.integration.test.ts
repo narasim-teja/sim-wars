@@ -131,4 +131,45 @@ describe("api server → worker integration", () => {
     expect(kinds.filter((k) => k === "tick:complete").length).toBeGreaterThanOrEqual(3);
     expect(kinds).toContain("sim:complete");
   }, 20000);
+
+  it("rejects malformed BYOK keys with 400", async () => {
+    const r = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agents,
+        tickConfig,
+        byokOpenRouterKey: "not-a-real-key",
+      }),
+    });
+    expect(r.status).toBe(400);
+    const body = (await r.json()) as { error: string };
+    expect(body.error.toLowerCase()).toContain("byok");
+  }, 10000);
+
+  it("strips byokOpenRouterKey from the persisted scenario.json", async () => {
+    const fakeKey = "sk-or-v1-" + "a".repeat(48);
+    const r = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agents,
+        tickConfig,
+        byokOpenRouterKey: fakeKey,
+      }),
+    });
+    expect(r.status).toBe(201);
+    const { simId } = (await r.json()) as { simId: string };
+    // give the worker a tick to flush scenario.json (it's written synchronously
+    // before spawn, but be safe across slow CI)
+    await Bun.sleep(200);
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const scenarioPath = resolve(__dirname, "../../.local/runs", simId, "scenario.json");
+    const raw = readFileSync(scenarioPath, "utf-8");
+    expect(raw.includes(fakeKey)).toBe(false);
+    expect(raw.includes("byokOpenRouterKey")).toBe(false);
+  }, 10000);
 });

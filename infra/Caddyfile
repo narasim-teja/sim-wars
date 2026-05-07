@@ -1,0 +1,32 @@
+# Caddy reverse proxy — fronts the sim-engine API and Next.js frontend on
+# the same origin so the browser sees relative URLs and there's no CORS or
+# cross-domain WebSocket dance. App Runner terminates TLS in front of this.
+
+{
+  # Use stdout for App Runner's CloudWatch shipping. Disable persistence
+  # of admin state since the container is single-instance.
+  admin off
+  log {
+    output stdout
+    format console
+    level INFO
+  }
+}
+
+:8080 {
+  encode gzip zstd
+
+  # WebSocket: /ws/sim/<id>. Caddy auto-handles the Upgrade header.
+  reverse_proxy /ws/* localhost:8787 {
+    transport http {
+      versions 1.1
+    }
+  }
+
+  # API + health
+  reverse_proxy /api/* localhost:8787
+  reverse_proxy /health localhost:8787
+
+  # Everything else → Next.js production server
+  reverse_proxy /* localhost:3000
+}

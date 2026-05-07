@@ -1,7 +1,12 @@
 import type { StatusSnapshot } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_SIM_API ?? "http://localhost:8787";
+/**
+ * In production we serve the API and the frontend from the same origin
+ * (Caddy fronts both inside the container), so default to relative URLs.
+ * Override with NEXT_PUBLIC_SIM_API for local dev pointing at a separate
+ * sim-engine on :8787.
+ */
+export const API_BASE = process.env.NEXT_PUBLIC_SIM_API ?? "";
 
 /**
  * Roster preset matching the backend `RosterPreset` type. Drives the
@@ -38,6 +43,30 @@ export interface CreateSimBody {
   extractedFields?: string[];
   tickConfig: { intervalMs: number; maxTicks: number };
   onChain?: boolean;
+  /**
+   * Bring-your-own OpenRouter key. Forwarded to the spawned worker via env;
+   * the API server never persists or logs it. Required when the deployment
+   * sets `SIM_REQUIRE_BYOK=1` (production).
+   */
+  byokOpenRouterKey?: string;
+}
+
+export interface DemoCard {
+  simId: string;
+  name: string;
+  description: string;
+  status: string;
+  totalTicks: number;
+  resilienceScore: number | null;
+  resilienceGrade: string | null;
+  deathSpiralDetected: boolean;
+}
+
+export async function listDemos(): Promise<DemoCard[]> {
+  const r = await fetch(`${API_BASE}/api/demos`);
+  if (!r.ok) throw new Error(`GET /api/demos failed: ${r.status}`);
+  const body = (await r.json()) as { demos: DemoCard[] };
+  return body.demos;
 }
 
 /** Mirror of sim-engine `DeploymentPlan` — returned by `POST /api/sim`. */

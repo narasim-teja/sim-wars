@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -8,7 +9,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * Each run owns: commands/ (api → worker), events.ndjson (worker → api),
  * sim.sqlite, and a snapshot of its scenario config.
  */
-export const RUNS_DIR = join(__dirname, "../../.local/runs");
+export const RUNS_DIR = process.env.SIM_RUNS_DIR
+  ? process.env.SIM_RUNS_DIR
+  : join(__dirname, "../../.local/runs");
+
+/**
+ * Read-only baked-in demo recordings shipped in the image at
+ * `sim-engine/runs-demo/`. The API server scans this on boot and exposes
+ * each subdirectory as a replayable run. Pause/resume/abort are no-ops
+ * because there's no worker behind a demo.
+ */
+export const DEMO_RUNS_DIR = process.env.SIM_DEMO_RUNS_DIR
+  ? process.env.SIM_DEMO_RUNS_DIR
+  : join(__dirname, "../../runs-demo");
 
 export interface RunPaths {
   simId: string;
@@ -34,4 +47,21 @@ export function pathsFor(simId: string, runsDir: string = RUNS_DIR): RunPaths {
     statusFile: join(root, "status.json"),
     reportFile: join(root, "report.json"),
   };
+}
+
+/**
+ * Resolves a simId to its on-disk paths, preferring the live `runs/` dir
+ * but falling back to `runs-demo/` so demo replays go through the same
+ * API surface as live runs.
+ */
+export function resolveRunPaths(simId: string): RunPaths {
+  const live = pathsFor(simId, RUNS_DIR);
+  if (existsSync(live.statusFile)) return live;
+  const demo = pathsFor(simId, DEMO_RUNS_DIR);
+  if (existsSync(demo.statusFile)) return demo;
+  return live;
+}
+
+export function isDemoRun(simId: string): boolean {
+  return existsSync(pathsFor(simId, DEMO_RUNS_DIR).statusFile);
 }
