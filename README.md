@@ -1,112 +1,232 @@
-# Tokenomics Stress-Test Platform (SWARM Hackathon Idea)
+# SIMWARS
 
-## One-Liner
+> Adversarial LLM-agent stress tests for token economies. Open-source, BYOK, runs on Solana devnet.
 
-LLM-powered adversarial agents that stress-test token economies on Solana devnet, validated against historical collapses like LUNA/UST.
+**🌐 Live: https://simwars.xyz** &nbsp;·&nbsp; [Demos](https://simwars.xyz/demos) &nbsp;·&nbsp; [About](https://simwars.xyz/about)
 
-## Problem
+---
 
-Bad tokenomics kills more crypto projects than bad code. The current process for validating tokenomics before launch is:
+## What it is
 
+A swarm of LLM-driven agents (whales, retail degens, governance attackers, MEV bots, sybil rings, treasuries) autonomously interact with a token economy you describe — either a preset (LUNA-UST, Curve veCRV) or a config you draft from a whitepaper PDF. Each tick, every agent receives the current state (price, supply, staking ratio, governance proposals, on-chain balances) and decides what to do. The platform observes emergent behavior — death spirals, governance capture, sybil collusion, peg breaks — and ships a post-sim resilience report.
+
+Validated against historical collapses: feed it LUNA's parameters and the agents reproduce the death spiral.
+
+## Try it without signing up
+
+1. Open https://simwars.xyz/demos
+2. Click either pre-recorded card (Curve veCRV survives, Uniswap UNI survives — a real LUNA death-spiral demo is the next thing to record)
+3. Watch the full run replay — token price, agent feed, governance traffic, post-sim report
+
+To run a custom sim against your own protocol's tokenomics:
+1. Get an OpenRouter key at https://openrouter.ai/keys
+2. From https://simwars.xyz, paste the key (BYOK — never persisted server-side, see [docs/deploy-handoff.md](docs/deploy-handoff.md) §2.1)
+3. Either pick a preset or upload a whitepaper PDF; the extractor drafts a config
+4. Adjust agent count + tick budget; click Deploy & simulate
+
+## Quick start (local dev)
+
+```bash
+# 1. Clone + install
+git clone https://github.com/narasim-teja/sim-wars.git
+cd sim-wars
+
+# 2. Backend (Bun)
+cd sim-engine && bun install
+echo 'OPENROUTER_API_KEY=sk-or-v1-...' > .env  # required for live runs
+bun test                                         # 85/85 pass
+
+# 3. Frontend (Next.js 16)
+cd ../frontend && bun install
+
+# 4. Run both, in two terminals
+cd sim-engine && bun run api     # API + WebSocket on :8787
+cd frontend  && bun run dev      # UI on :3000
+```
+
+Or run a single LUNA backtest from the CLI without the API server:
+```bash
+cd sim-engine && bun luna   # ~12 ticks, ~$0.015 OpenRouter spend, "Death spiral: YES"
+```
+
+## Deploy your own (AWS, ~$60/mo)
+
+The whole thing fits in one Docker container (Caddy + Bun API + Next.js) and runs on AWS App Runner with a custom domain. Shell scripts in [`infra/aws/`](infra/aws/) bootstrap the deploy:
+
+```bash
+export AWS_ACCOUNT_ID=<your account>
+export AWS_PROFILE=<your profile>          # default: dev
+export DOMAIN=<your domain>                # default: simwars.xyz
+
+bash infra/aws/01-bootstrap.sh   # R53 zone, ECR repo, IAM roles
+# → paste the printed nameservers into your registrar
+bash infra/aws/02-build-push.sh  # buildx --platform linux/amd64 → ECR
+bash infra/aws/03-deploy.sh      # creates the App Runner service
+bash infra/aws/04-domain.sh      # apex ALIAS + www CNAME + ACM cert validation
+```
+
+Full deployment notes live in [docs/deploy-handoff.md](docs/deploy-handoff.md), including the App Runner `PORT`-env gotcha, the apex-ALIAS-not-CNAME trick, and the BYOK redaction contract.
+
+## Architecture
+
+```
+                  https://simwars.xyz
+                          │
+                  Route 53 hosted zone
+                          │
+                AWS App Runner (us-east-1)
+                          │
+                Caddy :8080  (reverse proxy)
+                ┌─────────┴─────────┐
+            /api/*               /*
+            /ws/*           
+                │                  │
+        Bun :8787              Next.js :3000
+        sim-engine API         prod server
+                │
+        spawned worker subprocesses
+        per active simulation
+                │
+        runs/<simId>/ + runs-demo/<simId>/
+```
+
+| Layer | Tech | Notes |
+|---|---|---|
+| Frontend | Next.js 16, React 19, Recharts, base-ui | Live cost meter via WebSocket telemetry |
+| Backend | Bun + TypeScript | One worker subprocess per active sim; NDJSON event log + SQLite per run |
+| LLM | OpenRouter (BYOK) | Three-tier routing: fast / standard / reasoning. Prompt-cache aware. |
+| On-chain | Anchor 1.0 + Solana web3.js | Token mint, AMM DEX, staking, governance — disabled in prod, enabled locally |
+| Container | Caddy + Bun + Node + tini | Single image, three processes, `wait -n` propagates crashes |
+| Infra | AWS App Runner, ECR, Route 53, ACM | Idempotent shell scripts in `infra/aws/` |
+
+**LLM cost / latency at 100 agents × 5 ticks** (with `SIM_ACTIVATION_POLICY=sampled`):
+- ~$0.04 / run, ~3s tick latency, ~11% cache hit rate, full LUNA fidelity preserved.
+- See [docs/scaling-handoff.md](docs/scaling-handoff.md) for the empirical numbers and the reasoning behind every knob.
+
+## Agent personas
+
+Each persona has a hand-written system prompt + traits (risk tolerance, time horizon, capital, staking fraction). Templates expand into N clones with deterministic per-instance perturbations.
+
+| Type | What they do |
+|---|---|
+| **Whale** | Accumulates, dumps strategically when conditions favor exit |
+| **Retail degen** | FOMO buys, panic sells on 10%+ drawdowns |
+| **Yield farmer** | Chases highest APY, exits when emissions thin |
+| **Governance attacker** | Accumulates voting power, submits self-serving proposals |
+| **MEV bot** | Front-runs large trades |
+| **Sybil ring** | Operates 5–20 coordinated wallets |
+| **Long-term holder** | Stakes and forgets, occasionally votes |
+| **Arbitrageur** | Rational exploiter of price discrepancies |
+| **Treasury** | Automated defender — buybacks, liquidity provision |
+| **Insider** | Pre-launch knowledge, signals to allies |
+| **Analyst** | Reads governance, reasons about systemic risk |
+| **Panic seller** | Asymmetric loss aversion, contagion-prone |
+
+12 archetypes total. Roster expander mixes them by preset (`luna`, `crv`, `balanced`, `stress`, `lockup_resilience`).
+
+## Backtest validation
+
+The LUNA-UST regression is the ground-truth fidelity test. Every change to the prompt builder, activation policy, or pipeline path must keep `bun luna` printing **"Death spiral: YES"** with the price collapsing >99% by tick 12.
+
+| Scenario | Expected | Reality |
+|---|---|---|
+| LUNA-UST (Anchor 19.45% APY, algo-stable, $3B LFG) | Death spiral by ~tick 6–8 | ✓ reproduced consistently |
+| Curve veCRV (4-year lock, modest APY, fee-funded) | Survives, S grade | ✓ replays as a demo |
+| Uniswap UNI (60% community float, no peg) | Survives, A grade | ✓ replays as a demo |
+
+## Solana-native (currently dev-only)
+
+The on-chain path uses Anchor programs (token mint, AMM, staking, governance) deployed to a local `solana-test-validator` per-run. Production deployment **disables** this via `SIM_DISABLE_ONCHAIN=1` because per-sim full-deploy on devnet would torch faucet rate limits. The v2 plan is shared pre-deployed devnet programs that user sims call into:
+
+- Pre-deploy program IDs once, pin in `infra/onchain/devnet-programs.json`
+- Admin keypair in AWS Secrets Manager (small SOL balance for per-sim PDA rent)
+- Helius RPC free tier
+- Wallet-adapter on the frontend for users who want to sign their own actions
+
+See [docs/deploy-handoff.md](docs/deploy-handoff.md) §6.1 for the full v2 sketch.
+
+## Why this might matter
+
+Bad tokenomics kills more crypto projects than bad code. The status quo for validating tokenomics before launch is:
 1. Write a whitepaper with assumptions
 2. Maybe run spreadsheet simulations
 3. Launch and pray
 4. Token dumps 90% because nobody modeled what happens when whales coordinate, governance gets captured, or yield incentives create death spirals
 
-There's no way to stress-test tokenomics with adversarial AI agents before going live. Existing tools (TokenLab, Cenit Finance) use rule-based/statistical agents that can't reason about novel attack vectors. Gauntlet does agent-based DeFi risk modeling but is closed-source, enterprise-only, and focused on lending parameters rather than tokenomics design.
+Existing tools fall short: TokenLab uses rule-based ABM, Cenit explicitly doesn't model adversarial behavior, Gauntlet is closed-source / enterprise-only / focused on lending parameters. Nobody has combined **LLM-driven adversarial agents + real on-chain execution + historical backtest validation** for tokenomics design.
 
-## Solution
+Solana fits especially well: 400ms blocks map 1:1 to sim ticks, ZK-compressed accounts for cheap 1000+ agent wallets, Yellowstone gRPC for real-time observation, and Anchor program compatibility means a protocol team can hand us their unchanged programs and we deploy them on devnet with agents attacking them.
 
-A simulation platform where 10-100+ LLM-powered agents with distinct personas (whale, retail degen, yield farmer, governance attacker, MEV bot, sybil attacker, long-term holder, arbitrageur) autonomously interact with a token economy deployed on Solana devnet.
+## Hackathon track
 
-Each agent:
-- Has a system prompt defining its persona, goals, risk tolerance, and strategy
-- Receives current market state every simulation tick (price, supply, staking ratio, governance proposals)
-- Makes autonomous financial decisions via local LLM (Qwen 3 8B via Ollama)
-- Executes real Solana transactions (buy, sell, stake, unstake, vote, create proposals)
+**RFB 4 — Emergent Agent Economies.** Agents with different goals interact in a real-money Solana environment; the platform surfaces the emergent structures.
 
-The platform observes emergent behavior and produces a stress-test report identifying failure modes, centralization risks, and attack vectors.
+Also touches **RFB 1 (Discovery/Reputation)** — agents build on-chain interaction history that downstream consumers can score — and **RFB 5 (Multi-Agent Orchestration)** — sybil rings and governance attackers coordinate inside a single sim.
 
-## Backtest Validation
+## Repo layout
 
-The system is validated by reproducing historical token collapses:
+```
+sim-engine/        # Bun TypeScript — agent loop, LLM client, on-chain executor
+  src/             # API server, worker, agents, llm, chain, ipc, report
+  scenarios/       # luna-ust.ts, crv-curve.ts, swarm-100.ts
+  runs-demo/       # baked-in pre-recorded NDJSON streams
+  scripts/         # CLI entry points (bun luna, deploy-from-config, …)
+frontend/          # Next.js 16 — landing, /demos, /simulate/[id], /report/[id], /about
+  app/             # routes
+  components/      # TopNav, ByokDialog, sim/* dashboard widgets, upload/*
+  lib/             # api.ts, byok.ts, types.ts, threat.ts, scenarios.ts
+programs/          # Anchor 1.0 programs (token mint, AMM, staking, governance)
+infra/             # Dockerfile, Caddyfile, entrypoint.sh, AWS shell scripts
+docs/              # scaling-handoff.md, deploy-handoff.md, plan.md, autonomy-plan.md
+```
 
-- **LUNA/UST collapse**: Feed the exact tokenomics parameters (algorithmic stablecoin mint/burn, Anchor 19.45% APY, LFG reserves). Agents should reproduce the death spiral.
-- **CRV/Curve (resilient model)**: Show WHY veToken model survived attacks, where remaining vulnerabilities are.
-- **Solana-native token**: Stress-test a recent Solana token launch relevant to the ecosystem.
+## Configuration knobs
 
-"We fed our simulation LUNA's tokenomics. Our agents reproduced the death spiral. Now imagine if Do Kwon had this tool before launch."
+Production-relevant env vars (full list in [docs/deploy-handoff.md](docs/deploy-handoff.md) §5):
 
-## Architecture
-
-### Tech Stack
-- **Frontend/Dashboard**: Next.js, TanStack Query, Recharts
-- **Simulation Engine**: TypeScript, Bun (tick-based loop)
-- **Agent LLM**: Qwen 3 8B via Ollama (local, zero API cost, no rate limits)
-- **On-chain**: Anchor programs on Solana devnet (token mint, AMM DEX, staking, governance)
-- **Indexing**: Helius RPC, Yellowstone gRPC (real-time observation)
-- **Report Generation**: Claude API (single call post-simulation)
-- **Storage**: SQLite for simulation state
-
-### Agent Personas
-1. **Whale**: Accumulates large positions, dumps strategically
-2. **Retail degen**: FOMO buys, panic sells on drawdowns
-3. **Yield farmer**: Exploits every incentive loophole, moves capital to highest APY
-4. **Governance attacker**: Accumulates voting power, submits self-serving proposals
-5. **MEV bot**: Front-runs large trades
-6. **Long-term holder**: Stakes and forgets, occasionally votes
-7. **Sybil attacker**: Controls 5-20 wallets to game airdrops/governance
-8. **Arbitrageur**: Rational exploiter of price discrepancies
-9. **Protocol treasury**: Automated defender (buybacks, liquidity provision)
-
-### Simulation Flow
-1. User inputs token parameters (supply, allocation, vesting, staking APY, fees, governance thresholds)
-2. Engine deploys Anchor programs on devnet with those parameters
-3. Each tick: agents observe state -> LLM decides action -> execute on Solana devnet
-4. Observation layer (Helius/Yellowstone) computes real-time metrics: Gini coefficient, staking concentration, governance power distribution, price trajectory
-5. After N ticks: Claude API generates comprehensive stress-test report
-
-## Why Solana-Native
-
-- **400ms blocks**: Simulation ticks map 1:1 to real block production, preserving transaction ordering and MEV dynamics
-- **ZK Compression (Light Protocol)**: Spin up 1000+ agent wallets as compressed accounts for nearly zero cost
-- **Yellowstone gRPC**: Real-time streaming of every transaction and account update for the observation layer
-- **Anchor program compatibility**: Protocol teams can hand over their actual Anchor programs and we deploy them unchanged on devnet with agents attacking them
-- **Solana Agent Kit**: Native SDK for AI agents to interact with Solana programs
-- **Target market**: Every Solana token launch needs this. Jupiter, Jito, Marinade, and hundreds of new projects
-
-## Hackathon Track Fit
-
-**RFB 4: Emergent Agent Economies** — Agents with different goals interacting in a real-money Solana environment, observing emergent economic structures.
-
-Also touches **RFB 1 (Discovery/Reputation)** as agents build on-chain interaction history, and **RFB 5 (Multi-Agent Orchestration)** as agents coordinate attacks.
-
-## Judging Criteria Alignment
-
-- **Agentic Sophistication (30%)**: Full autonomy. LLM agents making real financial decisions every tick based on market state reasoning. Not automation, genuine AI decision-making.
-- **Traction (30%)**: Every hackathon team building tokenomics is a potential user. Can stress-test other teams' tokens during the event. Backtest results serve as published research. Target: 5-10 LOIs from teams wanting their tokens stress-tested.
-- **Innovation (40%)**: Nobody has combined LLM-agent adversarial simulation + on-chain execution + historical backtest validation for tokenomics. TokenLab uses rule-based agents. Gauntlet is closed-source enterprise. This is a new category.
-
-## Business Model (Post-Hackathon)
-
-1. **Self-serve**: Protocol team inputs parameters, standard agent roster runs simulation, automated report. $500-2000 per run.
-2. **Custom simulations**: Custom agent personas, specific attack scenarios. $5K-20K.
-3. **Continuous monitoring**: Post-launch, ongoing agent simulations detecting emerging risks. Monthly subscription.
-4. **Long-term**: Expand beyond tokenomics to DeFi parameter testing, governance attack simulation, airdrop distribution optimization.
-
-## Competitive Landscape
-
-| Competitor | Approach | Gap |
+| Env | Default | Effect |
 |---|---|---|
-| Gauntlet | Agent-based DeFi risk, closed-source, enterprise-only | No self-serve, no tokenomics focus, no LLM agents |
-| TokenLab | Python ABM framework, rule-based agents | No LLM reasoning, no on-chain execution, no backtest validation |
-| Cenit Finance | No-code simulator, organic price modeling | Explicitly doesn't model adversarial/speculative behavior |
-| Tokenomics.com | Consulting + spreadsheet models | Manual process, no agent simulation |
+| `OPENROUTER_API_KEY` | (unset; provided per-run via BYOK) | Server-side fallback only — production runs with no server key |
+| `OPENROUTER_AGENT_PRESET` | (unset) | OpenRouter preset slug for the standard tier |
+| `OPENROUTER_BOOST_PRESET` / `_REASONING_PRESET` / `_REPORT_PRESET` | (unset) | Three-tier routing + post-sim report model override |
+| `SIM_REQUIRE_BYOK` | `0` (prod sets `1`) | Require `byokOpenRouterKey` on `POST /api/sim` |
+| `SIM_DISABLE_ONCHAIN` | `0` (prod sets `1`) | Reject `onChain: true` create requests with 400 |
+| `SIM_API_PORT` | `8787` | Bun API port. **Don't use `PORT`** — App Runner reserves it. |
+| `SIM_ACTIVATION_POLICY` | `all` | `sampled` cuts swarm-100 cost by ~43% |
+| `SIM_BATCH_SIZE` | `24` | Per-batch parallel-fetch fan-out |
+| `SIM_PIPELINE` | (unset) | `1` enables pipelined batch dispatch (sacrifices delay-0 visibility) |
+| `SIM_MAX_INFLIGHT` | `4` | Concurrent batches under pipeline mode |
+| `SIM_MAX_AGENTS` | `5000` | Hard ceiling enforced in API |
 
-## Questions for Colosseum Copilot
+## Roadmap (v2)
 
-1. Has anyone built an LLM-agent-based tokenomics stress-testing or simulation tool on Solana in any previous hackathon?
-2. What agent-based simulation or multi-agent economy projects have been submitted to Solana hackathons?
-3. What tokenomics audit, validation, or simulation tools exist in the Solana ecosystem?
-4. Are there any projects combining adversarial AI agents with on-chain DeFi simulation?
-5. Run a Deep Dive gap analysis on this idea.
+- **Solana on-chain on devnet** — shared pre-deployed programs (hackathon-essential, see deploy-handoff §6.1)
+- **Re-record a real LUNA death-spiral demo** for narrative contrast against the surviving-protocol demos
+- **Paced replay** — `?speed=Nx` for the demo player
+- **Image slimming** — Next.js `output: "standalone"`, drop `pdfjs-dist` from runtime stage (1.47 GB → ~500 MB target)
+- **GitHub Actions auto-deploy** with AWS OIDC
+- **S3-backed run archive** + community `/runs` page
+- **Cost-meter polish** — distinguish "live cost" from "replay of past cost"
+- **Persona trait-vector diversity** — see scaling-handoff §6.3
+
+Full backlog in [docs/deploy-handoff.md](docs/deploy-handoff.md) §6.
+
+## Documentation
+
+- **[docs/deploy-handoff.md](docs/deploy-handoff.md)** — production deploy state, AWS infrastructure, BYOK contract, container shape, v2 backlog. Read this first if you're picking up the project.
+- **[docs/scaling-handoff.md](docs/scaling-handoff.md)** — LLM/agent path: prompt zoning, cache lanes, activation policies, three-tier routing, empirical cost/latency numbers from 8/100/1000-agent runs.
+- **[docs/plan.md](docs/plan.md)** + **[docs/autonomy-plan.md](docs/autonomy-plan.md)** — earlier planning artifacts.
+
+## Contributing
+
+The repo is structured to make adding new agent personas, scenarios, and LLM providers straightforward:
+
+- **New persona** → drop a `systemPrompt` + traits into [`sim-engine/src/agents/personas/`](sim-engine/src/agents/personas) and register in the roster expander.
+- **New scenario** → copy [`sim-engine/scenarios/luna-ust.ts`](sim-engine/scenarios/luna-ust.ts), edit the `SimulationConfig`, run with `bun run src/index.ts ../scenarios/<name>.ts`.
+- **New LLM provider** → implement [`LLMClient`](sim-engine/src/llm/types.ts) (`generate`, `generateBatch`, `generateRaw`, `drainUsage`). MockProvider in [`sim-engine/src/llm/providers/mock-provider.ts`](sim-engine/src/llm/providers/mock-provider.ts) is the reference shape.
+
+Run `bun test` (85 tests across 18 files) and `bun luna` (LUNA fidelity regression) before opening a PR.
+
+## License
+
+MIT.
