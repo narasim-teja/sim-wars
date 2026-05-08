@@ -9,7 +9,14 @@ import { ByokDialog } from "@/components/ByokDialog";
 import { previewDeploymentPlan } from "@/lib/deployment-plan";
 import { SCENARIO_PRESETS } from "@/lib/scenarios";
 import { createSim, type RosterPreset, type CreateSimBody } from "@/lib/api";
-import { getStoredKey, clearStoredKey, isRemembered, maskKey } from "@/lib/byok";
+import {
+  getStoredCredential,
+  setStoredCredential,
+  clearStoredCredential,
+  isRemembered,
+  validateCredential,
+  maskCredential,
+} from "@/lib/byok";
 import {
   AGENT_COUNT_STEPS,
   DEFAULT_AGENT_COUNT,
@@ -50,14 +57,28 @@ export default function HomeClient() {
   const [customMeta, setCustomMeta] = useState<ExtractionOutcome | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
 
-  // BYOK state. The key is held in client memory only; persistence (when
+  // BYOK state. Credentials live in client memory only; persistence (when
   // toggled) goes through localStorage in `lib/byok.ts`. The server never
-  // logs or persists it (verified by integration test).
-  // Initial value comes from `useState`'s lazy initializer so we bypass the
-  // forbidden setState-in-effect pattern; on SSR `getStoredKey()` returns null.
-  const [byokKey, setByokKey] = useState<string | null>(() => getStoredKey());
+  // logs or persists either credential (verified by integration test).
+  // Initial values come from `useState`'s lazy initializer so we bypass the
+  // forbidden setState-in-effect pattern; on SSR the getters return null.
+  const [byokKey, setByokKey] = useState<string | null>(() =>
+    getStoredCredential("openrouter"),
+  );
   const [byokOpen, setByokOpen] = useState(false);
-  const [byokRemembered, setByokRemembered] = useState<boolean>(() => isRemembered());
+  const [byokRemembered, setByokRemembered] = useState<boolean>(() =>
+    isRemembered("openrouter"),
+  );
+  // Helius is optional even when on-chain is enabled — without it, the
+  // server falls back to the public devnet RPC. Stored persistently (no
+  // session-only mode); maintained inline below the on-chain toggle.
+  const [byokHelius, setByokHelius] = useState<string | null>(() =>
+    getStoredCredential("helius"),
+  );
+  const [byokHeliusDraft, setByokHeliusDraft] = useState<string>(
+    () => getStoredCredential("helius") ?? "",
+  );
+  const [byokHeliusError, setByokHeliusError] = useState<string | null>(null);
   // Pending `launch()` resumption — set when launch() opens the dialog.
   const [pendingLaunch, setPendingLaunch] = useState(false);
 
@@ -267,9 +288,14 @@ export default function HomeClient() {
             ...extractionMeta,
             ...fieldsBody,
           };
-      // Attach the BYOK key. Server forwards via env to the worker subprocess
-      // and does NOT write it to disk or any log line.
-      const body: CreateSimBody = effectiveKey ? { ...baseBody, byokOpenRouterKey: effectiveKey } : baseBody;
+      // Attach BYOK credentials. Server forwards each via env to the worker
+      // (and on-chain deploy) subprocess and does NOT write them to disk or
+      // any log line. Helius is only meaningful for on-chain runs.
+      const body: CreateSimBody = {
+        ...baseBody,
+        ...(effectiveKey ? { byokOpenRouterKey: effectiveKey } : {}),
+        ...(onChain && byokHelius ? { byokHeliusUrl: byokHelius } : {}),
+      };
       const { simId } = await createSim(body);
       router.push(`/simulate/${simId}`);
     } catch (e) {
@@ -280,7 +306,7 @@ export default function HomeClient() {
 
   function onByokSubmit(key: string) {
     setByokKey(key);
-    setByokRemembered(isRemembered());
+    setByokRemembered(isRemembered("openrouter"));
     if (pendingLaunch) {
       setPendingLaunch(false);
       // Pass the key as an override since React state hasn't committed yet.
@@ -289,9 +315,40 @@ export default function HomeClient() {
   }
 
   function onClearKey() {
-    clearStoredKey();
+    clearStoredCredential("openrouter");
     setByokKey(null);
     setByokRemembered(false);
+  }
+
+  /**
+   * Commit the Helius draft to the store. Called on blur and on explicit
+   * "save" — empty input clears the stored credential. Validation mirrors
+   * the server's `isPlausibleHeliusInput`.
+   */
+  function commitHeliusDraft() {
+    const trimmed = byokHeliusDraft.trim();
+    if (trimmed.length === 0) {
+      clearStoredCredential("helius");
+      setByokHelius(null);
+      setByokHeliusError(null);
+      return;
+    }
+    if (!validateCredential("helius", trimmed)) {
+      setByokHeliusError(
+        "Expected a Helius URL (https://*.helius-rpc.com/?api-key=…) or a bare API key.",
+      );
+      return;
+    }
+    setStoredCredential("helius", trimmed);
+    setByokHelius(trimmed);
+    setByokHeliusError(null);
+  }
+
+  function onClearHelius() {
+    clearStoredCredential("helius");
+    setByokHelius(null);
+    setByokHeliusDraft("");
+    setByokHeliusError(null);
   }
 
   // Agent-type breakdown for the UI: from the static roster when we'd send it,
@@ -564,6 +621,20 @@ export default function HomeClient() {
               onChange={setOnChain}
             />
 
+            {onChain && (
+              <HeliusByokField
+                draft={byokHeliusDraft}
+                onDraftChange={(v) => {
+                  setByokHeliusDraft(v);
+                  if (byokHeliusError) setByokHeliusError(null);
+                }}
+                onCommit={commitHeliusDraft}
+                onClear={onClearHelius}
+                error={byokHeliusError}
+                stored={byokHelius}
+              />
+            )}
+
             {onChain && deployPreview && (
               <DeploymentPreview
                 plan={deployPreview}
@@ -600,7 +671,9 @@ export default function HomeClient() {
                 <span className="shrink-0 uppercase tracking-[0.22em]">key</span>
                 {byokKey ? (
                   <>
-                    <span className="truncate text-emerald-800">{maskKey(byokKey)}</span>
+                    <span className="truncate text-emerald-800">
+                      {maskCredential("openrouter", byokKey)}
+                    </span>
                     <span className="shrink-0 text-emerald-700/70 normal-case tracking-normal">
                       {byokRemembered ? "saved" : "session"}
                     </span>
@@ -753,10 +826,81 @@ function ChainToggle({
       />
       <span className="text-[11px] leading-5 text-zinc-500">
         Deploy mints + AMM pool + staking + governance to the configured Solana cluster, then run.
-        Each agent gets a real keypair + ATAs. Requires deployer SOL (≈ 0.5 + 5×agents). Without
-        this, the sim runs against an in-memory AMM only.
+        Each agent gets a real keypair + ATAs. Without this, the sim runs against an in-memory AMM only.
       </span>
     </label>
+  );
+}
+
+/**
+ * Optional Helius RPC URL field — visible only when on-chain mode is on.
+ * Public devnet works for small sims; heavy ones throttle. Same redaction
+ * contract as the OpenRouter key (`maskCredential` for display, never logged).
+ */
+function HeliusByokField({
+  draft,
+  onDraftChange,
+  onCommit,
+  onClear,
+  error,
+  stored,
+}: {
+  draft: string;
+  onDraftChange: (v: string) => void;
+  onCommit: () => void;
+  onClear: () => void;
+  error: string | null;
+  stored: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-zinc-200 bg-white px-3 py-2.5">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+          Helius RPC · optional
+        </span>
+        {stored && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-700">
+            saved
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onBlur={onCommit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onCommit();
+            }
+          }}
+          placeholder="https://devnet.helius-rpc.com/?api-key=…  (or paste a bare API key)"
+          spellCheck={false}
+          autoComplete="off"
+          className="flex-1 rounded border border-zinc-200 bg-white px-2 py-1 font-mono text-[11px] tabular-nums text-zinc-900 outline-none focus:border-zinc-400"
+        />
+        {(stored || draft) && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500 hover:text-zinc-900"
+          >
+            clear
+          </button>
+        )}
+      </div>
+      {error ? (
+        <p className="font-mono text-[10px] text-red-700">{error}</p>
+      ) : (
+        <p className="text-[11px] leading-5 text-zinc-500">
+          Skip and we&apos;ll use the public devnet endpoint (rate-limited at ~10 req/s — fine for
+          small sims). For heavy runs, paste a Helius URL or API key. Same contract as your
+          OpenRouter key: forwarded to the worker for the run only, never written to disk.
+        </p>
+      )}
+    </div>
   );
 }
 

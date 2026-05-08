@@ -49,6 +49,13 @@ export interface CreateSimBody {
    * sets `SIM_REQUIRE_BYOK=1` (production).
    */
   byokOpenRouterKey?: string;
+  /**
+   * Bring-your-own Helius RPC URL — optional. Same redaction contract as
+   * `byokOpenRouterKey`. Used only for on-chain runs; when omitted the
+   * server falls back to the public devnet endpoint (rate-limited at
+   * ~10 req/s but fine for small sims).
+   */
+  byokHeliusUrl?: string;
 }
 
 export interface DemoCard {

@@ -13,10 +13,31 @@ set -euo pipefail
 cd /app
 
 echo "[entrypoint] booting SIMWARS"
-echo "[entrypoint] BYOK required:   ${SIM_REQUIRE_BYOK:-0}"
+echo "[entrypoint] BYOK required:     ${SIM_REQUIRE_BYOK:-0}"
 echo "[entrypoint] on-chain disabled: ${SIM_DISABLE_ONCHAIN:-0}"
-echo "[entrypoint] runs dir:        ${SIM_RUNS_DIR:-/app/runs}"
-echo "[entrypoint] demos dir:       ${SIM_DEMO_RUNS_DIR:-/app/sim-engine/runs-demo}"
+echo "[entrypoint] solana network:    ${SOLANA_NETWORK:-localnet}"
+echo "[entrypoint] runs dir:          ${SIM_RUNS_DIR:-/app/runs}"
+echo "[entrypoint] demos dir:         ${SIM_DEMO_RUNS_DIR:-/app/sim-engine/runs-demo}"
+
+# Fetch the Solana deployer keypair from AWS Secrets Manager and write it to
+# disk for Anchor to consume. Only runs when the ARN is configured (i.e. the
+# devnet on-chain path is wired); on local builds the var is empty and we
+# skip silently. The secret is a JSON array of bytes — same shape produced
+# by `solana-keygen new --outfile`.
+if [ -n "${DEPLOYER_KEYPAIR_SECRET_ARN:-}" ]; then
+  echo "[entrypoint] fetching deployer keypair from Secrets Manager"
+  KEYPAIR_PATH="${ANCHOR_WALLET:-/tmp/anchor-wallet.json}"
+  if ! aws secretsmanager get-secret-value \
+        --secret-id "${DEPLOYER_KEYPAIR_SECRET_ARN}" \
+        --region "${AWS_REGION:-us-east-1}" \
+        --query SecretString --output text > "${KEYPAIR_PATH}"; then
+    echo "[entrypoint] FATAL: failed to fetch deployer keypair (secret ARN, IAM role?)"
+    exit 1
+  fi
+  chmod 600 "${KEYPAIR_PATH}"
+  export ANCHOR_WALLET="${KEYPAIR_PATH}"
+  echo "[entrypoint] wrote deployer keypair to ${KEYPAIR_PATH}"
+fi
 
 # 1. Sim-engine API (Bun) on :8787
 (

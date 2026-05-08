@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { setStoredKey, looksLikeOpenRouterKey } from "@/lib/byok";
+import { setStoredCredential, validateCredential } from "@/lib/byok";
 import { cn } from "@/lib/utils";
 
 interface ByokDialogProps {
@@ -31,11 +31,11 @@ export function ByokDialog({ open, onOpenChange, onSubmit, initialKey }: ByokDia
 
   const submit = () => {
     const trimmed = key.trim();
-    if (!looksLikeOpenRouterKey(trimmed)) {
+    if (!validateCredential("openrouter", trimmed)) {
       setError("That doesn't look like an OpenRouter key. Expected a string starting with sk-or-…");
       return;
     }
-    setStoredKey(trimmed, remember);
+    setStoredCredential("openrouter", trimmed, { remember });
     setError(null);
     onSubmit(trimmed);
     onOpenChange(false);

@@ -96,8 +96,30 @@ else
         "Action": "sts:AssumeRole"
       }]
     }' >/dev/null
-  echo "  created (no extra policies attached — BYOK means no Secrets Manager access yet)"
+  echo "  created"
 fi
+
+# 4b. Inline policy: read SIMWARS secrets (Solana deployer keypair). Phase 4
+# adds this — the BYOK Helius URL stays client-side, but the deployer
+# keypair has to be fetched at boot. Scoped to `simwars/*` so a future
+# secret with a different prefix isn't accidentally readable.
+echo "── IAM inline policy: simwars-secrets-read ─────────────────"
+SECRETS_POLICY_DOC=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+    "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:simwars/*"
+  }]
+}
+EOF
+)
+aws_run iam put-role-policy \
+  --role-name "${APP_RUNNER_INSTANCE_ROLE}" \
+  --policy-name "simwars-secrets-read" \
+  --policy-document "${SECRETS_POLICY_DOC}" >/dev/null
+echo "  attached/updated (idempotent)"
 
 echo
 echo "════════════════════════════════════════════════════════════"

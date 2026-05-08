@@ -20,6 +20,12 @@ import {
   type RateLimitConfig,
   type RateLimitDecision,
 } from "./rate-limit";
+import {
+  isPlausibleOpenRouterKey,
+  isPlausibleHeliusInput,
+  normalizeHeliusUrl,
+  PUBLIC_DEVNET_RPC,
+} from "./byok";
 
 interface SpawnedRun {
   simId: string;
@@ -88,6 +94,15 @@ interface CreateSimBody {
    * the only way to launch a non-demo run.
    */
   byokOpenRouterKey?: string;
+  /**
+   * Bring-your-own Helius RPC URL — optional. Same redaction contract as
+   * `byokOpenRouterKey`: forwarded via env to the worker + deploy
+   * subprocess as `ANCHOR_PROVIDER_URL` and stripped from scenario.json.
+   * When omitted, on-chain runs use the public devnet endpoint
+   * (`https://api.devnet.solana.com`), which works for small sims but
+   * rate-limits at ~10 req/s. Heavy sims (50+ agents) need a Helius key.
+   */
+  byokHeliusUrl?: string;
 }
 
 const REQUIRE_BYOK = process.env.SIM_REQUIRE_BYOK === "1";
@@ -105,9 +120,13 @@ const RATE_LIMIT_PER_KEY: RateLimitConfig = {
   windowMs: Number(process.env.SIM_RATE_LIMIT_WINDOW_MS ?? 3600_000),
 };
 
-function isPlausibleOpenRouterKey(k: unknown): k is string {
-  return typeof k === "string" && /^sk-or-[a-z0-9-]+$/i.test(k.trim()) && k.length <= 200;
-}
+// On-chain runs spend the deployer keypair's SOL (rent + tx fees) per sim, so
+// they get a tighter cap than the general per-IP limit. With ~0.01 SOL/sim a
+// 3/hour cap costs ≤0.72 SOL/day at full saturation across all callers.
+const RATE_LIMIT_ONCHAIN_PER_IP: RateLimitConfig = {
+  limit: Number(process.env.SIM_ONCHAIN_RATE_LIMIT_PER_IP ?? 3),
+  windowMs: Number(process.env.SIM_RATE_LIMIT_WINDOW_MS ?? 3600_000),
+};
 
 /**
  * Standard `X-RateLimit-*` headers (non-RFC but the de-facto convention
@@ -169,6 +188,24 @@ async function handleCreate(req: Request): Promise<Response> {
     byokKey = body.byokOpenRouterKey.trim();
   }
 
+  // BYOK Helius — same redaction contract. Optional even for on-chain runs;
+  // when omitted we fall back to the public devnet RPC, which is fine for
+  // small sims and rate-limits gracefully on bigger ones.
+  let byokHeliusUrl: string | undefined;
+  if (body.byokHeliusUrl != null && body.byokHeliusUrl !== "") {
+    if (!isPlausibleHeliusInput(body.byokHeliusUrl)) {
+      return json(
+        {
+          error:
+            "byokHeliusUrl must be a Helius URL (https://*.helius-rpc.com/?api-key=…) " +
+            "or a bare API key (8–80 alphanumeric chars).",
+        },
+        { status: 400, headers: { ...corsHeaders(), ...rateLimitHeaders(ipDecision) } },
+      );
+    }
+    byokHeliusUrl = normalizeHeliusUrl(body.byokHeliusUrl);
+  }
+
   // Per-key cap is independent of per-IP — caught here so BYOK abusers
   // can't dodge by rotating IPs. Fingerprint avoids holding the full key
   // in the limiter map. Only enforced when a key is actually present.
@@ -193,6 +230,15 @@ async function handleCreate(req: Request): Promise<Response> {
       { error: "on-chain runs are disabled on this deployment (SIM_DISABLE_ONCHAIN=1)" },
       { status: 400, headers: corsHeaders() },
     );
+  }
+  // Tighter cap for on-chain runs — each one spends server SOL (rent + tx
+  // fees from the deployer keypair). Stacks on top of the general per-IP
+  // limit checked above; an attacker hitting this 429 still consumed a
+  // token from the general bucket.
+  let onchainDecision: RateLimitDecision | null = null;
+  if (body.onChain) {
+    onchainDecision = apiRateLimiter.check(`onchain-ip:${ip}`, RATE_LIMIT_ONCHAIN_PER_IP);
+    if (!onchainDecision.allowed) return rateLimit429("ip", onchainDecision);
   }
   // Worker treats `maxTicks=0` as "run forever" but in practice it short-
   // circuits to 0 ticks completed and ships an empty F-grade report —
@@ -284,14 +330,15 @@ async function handleCreate(req: Request): Promise<Response> {
 
   // Persist the resolved roster + normalized config, not the request body, so
   // worker + deploy script see the exact same shape the API committed to.
-  // CRITICAL: strip `byokOpenRouterKey` so it never lands on disk. The key
-  // travels in-memory to the worker via spawn env and dies with the process.
+  // CRITICAL: strip both BYOK fields so they never land on disk. They travel
+  // in-memory to the worker via spawn env and die with the process.
   const persistedBody: CreateSimBody = {
     ...body,
     config: normalizedConfig,
     agents: resolvedAgents,
   };
   delete persistedBody.byokOpenRouterKey;
+  delete persistedBody.byokHeliusUrl;
 
   const paths = pathsFor(simId);
   mkdirSync(paths.commandsDir, { recursive: true });
@@ -306,10 +353,18 @@ async function handleCreate(req: Request): Promise<Response> {
   // gap between deploy + worker spawn can subscribe and tail events.
   runs.set(simId, { simId, process: null, startedAt: Date.now(), eventsOffset: 0 });
 
-  // Per-run env passed to the worker subprocess. The BYOK key lives ONLY here
-  // and in the spawned process — it goes away when the worker exits.
+  // Per-run env passed to the worker (and deploy) subprocesses. BYOK secrets
+  // live ONLY here and in the spawned process — they go away when it exits.
+  // ANCHOR_PROVIDER_URL is the canonical Anchor knob and resolveRpcUrl()
+  // reads it before any other source.
   const workerEnv: Record<string, string> = {};
   if (byokKey) workerEnv.OPENROUTER_API_KEY = byokKey;
+  if (body.onChain) {
+    // Default to the public devnet RPC if no BYOK key was supplied. Without
+    // this, on-chain runs would fall back to localhost (DEFAULT_RPC) inside
+    // the container and immediately fail.
+    workerEnv.ANCHOR_PROVIDER_URL = byokHeliusUrl ?? PUBLIC_DEVNET_RPC;
+  }
 
   if (body.onChain) {
     // Fire-and-forget the deploy → worker chain. The HTTP response returns
@@ -400,7 +455,11 @@ async function runDeployThenWorker(
     cmd: ["bun", ...deployArgs],
     stdout: "pipe",
     stderr: "pipe",
-    env: process.env,
+    // Merge workerEnv (carries the BYOK Helius URL when supplied) so the
+    // deploy script's `getProvider()` picks the right RPC. Without this it
+    // would fall back to whatever `ANCHOR_PROVIDER_URL` the API process
+    // inherited (typically empty → localhost).
+    env: { ...process.env, ...workerEnv },
   });
 
   // Tee stdout/stderr into the events stream as progress lines so the UI can

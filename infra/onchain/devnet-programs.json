@@ -1,0 +1,10 @@
+{
+  "_doc": "Pre-deployed Solana devnet program IDs. Populated by infra/onchain/deploy-devnet.sh. Read at runtime by sim-engine/src/chain/connection.ts when SOLANA_NETWORK=devnet. The file is shipped inside the container at /app/infra/onchain/devnet-programs.json (overrideable via DEVNET_PROGRAMS_PATH).",
+  "cluster": "devnet",
+  "programs": {
+    "tokenMint": "REPLACE_ME",
+    "ammDex": "REPLACE_ME",
+    "staking": "REPLACE_ME",
+    "governance": "REPLACE_ME"
+  }
+}

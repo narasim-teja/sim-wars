@@ -3,6 +3,11 @@
 **/.next
 **/dist
 **/target
+# …except the IDLs — sdk.ts loads these at runtime to talk to the
+# pre-deployed Anchor programs. They're produced by `anchor build` and
+# must be present before `02-build-push.sh`.
+!target/idl
+!target/idl/**
 **/.turbo
 **/.cache
 **/*.tsbuildinfo

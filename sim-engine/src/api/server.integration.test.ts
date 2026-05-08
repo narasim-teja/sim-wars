@@ -172,4 +172,44 @@ describe("api server → worker integration", () => {
     expect(raw.includes(fakeKey)).toBe(false);
     expect(raw.includes("byokOpenRouterKey")).toBe(false);
   }, 10000);
+
+  it("rejects malformed byokHeliusUrl with 400", async () => {
+    const r = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agents,
+        tickConfig,
+        byokHeliusUrl: "http://evil.example.com/?api-key=abc",
+      }),
+    });
+    expect(r.status).toBe(400);
+    const body = (await r.json()) as { error: string };
+    expect(body.error.toLowerCase()).toContain("helius");
+  }, 10000);
+
+  it("strips byokHeliusUrl from the persisted scenario.json", async () => {
+    const fakeHelius = "https://devnet.helius-rpc.com/?api-key=" + "x".repeat(36);
+    const r = await fetch(`http://localhost:${PORT}/api/sim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: tinyConfig,
+        agents,
+        tickConfig,
+        byokHeliusUrl: fakeHelius,
+      }),
+    });
+    expect(r.status).toBe(201);
+    const { simId } = (await r.json()) as { simId: string };
+    await Bun.sleep(200);
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const scenarioPath = resolve(__dirname, "../../.local/runs", simId, "scenario.json");
+    const raw = readFileSync(scenarioPath, "utf-8");
+    expect(raw.includes(fakeHelius)).toBe(false);
+    expect(raw.includes("byokHeliusUrl")).toBe(false);
+    expect(raw.includes("xxxxxxxxxx")).toBe(false);
+  }, 10000);
 });

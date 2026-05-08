@@ -31,5 +31,12 @@ aws_run() {
   aws --profile "$AWS_PROFILE" --region "$AWS_REGION" "$@"
 }
 
+# Optional secret ARN for the Solana deployer keypair. When set, 03-deploy.sh
+# wires this through to the App Runner runtime env so entrypoint.sh fetches
+# the keypair at boot. Empty by default — the local-only / on-chain-disabled
+# path doesn't need it. Populate after running infra/onchain/deploy-devnet.sh
+# and `aws secretsmanager create-secret --name simwars/deployer-keypair …`.
+export DEPLOYER_KEYPAIR_SECRET_ARN="${DEPLOYER_KEYPAIR_SECRET_ARN:-}"
+
 # Standard error handling for scripts that source this file.
 set -euo pipefail

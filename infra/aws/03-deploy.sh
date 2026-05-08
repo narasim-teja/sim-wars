@@ -20,6 +20,23 @@ if [ -z "${SERVICE_ARN}" ] || [ "${SERVICE_ARN}" = "None" ]; then
   echo "  Creating App Runner service ${APP_RUNNER_SERVICE}"
   echo "════════════════════════════════════════════════════════════"
 
+  # Build the runtime env block. Devnet on-chain knobs only get attached
+  # when DEPLOYER_KEYPAIR_SECRET_ARN is set (i.e. the user has run
+  # deploy-devnet.sh and pushed the keypair to Secrets Manager). Without
+  # the ARN we ship in localnet mode and on-chain runs will fail at the
+  # SDK layer — clean failure instead of half-configured devnet.
+  ONCHAIN_ENV=""
+  if [ -n "${DEPLOYER_KEYPAIR_SECRET_ARN}" ]; then
+    ONCHAIN_ENV=",
+          \"SOLANA_NETWORK\": \"devnet\",
+          \"DEVNET_PROGRAMS_PATH\": \"/app/infra/onchain/devnet-programs.json\",
+          \"DEPLOYER_KEYPAIR_SECRET_ARN\": \"${DEPLOYER_KEYPAIR_SECRET_ARN}\",
+          \"SIM_ONCHAIN_RATE_LIMIT_PER_IP\": \"3\""
+    echo "  on-chain mode: devnet (keypair from ${DEPLOYER_KEYPAIR_SECRET_ARN})"
+  else
+    echo "  on-chain mode: disabled (set DEPLOYER_KEYPAIR_SECRET_ARN to enable)"
+  fi
+
   CONFIG=$(cat <<EOF
 {
   "ServiceName": "${APP_RUNNER_SERVICE}",
@@ -31,13 +48,12 @@ if [ -z "${SERVICE_ARN}" ] || [ "${SERVICE_ARN}" = "None" ]; then
         "Port": "8080",
         "RuntimeEnvironmentVariables": {
           "SIM_REQUIRE_BYOK": "1",
-          "SIM_DISABLE_ONCHAIN": "1",
           "SIM_API_PORT": "8787",
           "NEXT_PORT": "3000",
           "PUBLIC_PORT": "8080",
           "SIM_RATE_LIMIT_PER_IP": "10",
           "SIM_RATE_LIMIT_PER_KEY": "20",
-          "SIM_RATE_LIMIT_WINDOW_MS": "3600000"
+          "SIM_RATE_LIMIT_WINDOW_MS": "3600000"${ONCHAIN_ENV}
         }
       }
     },
