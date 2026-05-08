@@ -20,7 +20,7 @@ Validated against historical collapses: feed it LUNA's parameters and the agents
 
 To run a custom sim against your own protocol's tokenomics:
 1. Get an OpenRouter key at https://openrouter.ai/keys
-2. From https://simwars.xyz, paste the key (BYOK — never persisted server-side, see [docs/deploy-handoff.md](docs/deploy-handoff.md) §2.1)
+2. From https://simwars.xyz, paste the key (BYOK — never persisted server-side
 3. Either pick a preset or upload a whitepaper PDF; the extractor drafts a config
 4. Adjust agent count + tick budget; click Deploy & simulate
 
@@ -48,24 +48,6 @@ Or run a single LUNA backtest from the CLI without the API server:
 ```bash
 cd sim-engine && bun luna   # ~12 ticks, ~$0.015 OpenRouter spend, "Death spiral: YES"
 ```
-
-## Deploy your own (AWS, ~$60/mo)
-
-The whole thing fits in one Docker container (Caddy + Bun API + Next.js) and runs on AWS App Runner with a custom domain. Shell scripts in [`infra/aws/`](infra/aws/) bootstrap the deploy:
-
-```bash
-export AWS_ACCOUNT_ID=<your account>
-export AWS_PROFILE=<your profile>          # default: dev
-export DOMAIN=<your domain>                # default: simwars.xyz
-
-bash infra/aws/01-bootstrap.sh   # R53 zone, ECR repo, IAM roles
-# → paste the printed nameservers into your registrar
-bash infra/aws/02-build-push.sh  # buildx --platform linux/amd64 → ECR
-bash infra/aws/03-deploy.sh      # creates the App Runner service
-bash infra/aws/04-domain.sh      # apex ALIAS + www CNAME + ACM cert validation
-```
-
-Full deployment notes live in [docs/deploy-handoff.md](docs/deploy-handoff.md), including the App Runner `PORT`-env gotcha, the apex-ALIAS-not-CNAME trick, and the BYOK redaction contract.
 
 ## Architecture
 
@@ -171,7 +153,6 @@ frontend/          # Next.js 16 — landing, /demos, /simulate/[id], /report/[id
   lib/             # api.ts, byok.ts, types.ts, threat.ts, scenarios.ts
 programs/          # Anchor 1.0 programs (token mint, AMM, staking, governance)
 infra/             # Dockerfile, Caddyfile, entrypoint.sh, AWS shell scripts
-docs/              # scaling-handoff.md, deploy-handoff.md, plan.md, autonomy-plan.md
 ```
 
 ## Configuration knobs
