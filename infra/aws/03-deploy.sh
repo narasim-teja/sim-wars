@@ -34,7 +34,10 @@ if [ -z "${SERVICE_ARN}" ] || [ "${SERVICE_ARN}" = "None" ]; then
           "SIM_DISABLE_ONCHAIN": "1",
           "SIM_API_PORT": "8787",
           "NEXT_PORT": "3000",
-          "PUBLIC_PORT": "8080"
+          "PUBLIC_PORT": "8080",
+          "SIM_RATE_LIMIT_PER_IP": "10",
+          "SIM_RATE_LIMIT_PER_KEY": "20",
+          "SIM_RATE_LIMIT_WINDOW_MS": "3600000"
         }
       }
     },
@@ -69,6 +72,12 @@ else
   echo "════════════════════════════════════════════════════════════"
   aws_run apprunner start-deployment --service-arn "${SERVICE_ARN}"
   echo "  deployment kicked off"
+  echo
+  echo "  NOTE: start-deployment re-pulls the image but does NOT update env vars."
+  echo "  If you added knobs to RuntimeEnvironmentVariables above, run:"
+  echo "    aws --profile ${AWS_PROFILE} --region ${AWS_REGION} apprunner update-service \\"
+  echo "      --service-arn \"${SERVICE_ARN}\" \\"
+  echo "      --source-configuration '{\"ImageRepository\": {...}}'  # full ImageConfiguration block"
 fi
 
 echo

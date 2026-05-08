@@ -13,6 +13,13 @@ import { perRunDeploymentPath } from "../chain/sdk";
 import { buildDeploymentPlan } from "../chain/deployment-plan";
 import { expandRoster, type RosterPreset } from "../agents/roster";
 import { MAX_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
+import {
+  apiRateLimiter,
+  fingerprintKey,
+  getClientIp,
+  type RateLimitConfig,
+  type RateLimitDecision,
+} from "./rate-limit";
 
 interface SpawnedRun {
   simId: string;
@@ -86,14 +93,66 @@ interface CreateSimBody {
 const REQUIRE_BYOK = process.env.SIM_REQUIRE_BYOK === "1";
 const DISABLE_ONCHAIN = process.env.SIM_DISABLE_ONCHAIN === "1";
 
+// Rate-limit config: env-driven so production can tune without redeploying
+// the image. BYOK protects our LLM bill; the limiter protects the App
+// Runner instance from any caller spamming worker spawns.
+const RATE_LIMIT_PER_IP: RateLimitConfig = {
+  limit: Number(process.env.SIM_RATE_LIMIT_PER_IP ?? 10),
+  windowMs: Number(process.env.SIM_RATE_LIMIT_WINDOW_MS ?? 3600_000),
+};
+const RATE_LIMIT_PER_KEY: RateLimitConfig = {
+  limit: Number(process.env.SIM_RATE_LIMIT_PER_KEY ?? 20),
+  windowMs: Number(process.env.SIM_RATE_LIMIT_WINDOW_MS ?? 3600_000),
+};
+
 function isPlausibleOpenRouterKey(k: unknown): k is string {
   return typeof k === "string" && /^sk-or-[a-z0-9-]+$/i.test(k.trim()) && k.length <= 200;
 }
 
+/**
+ * Standard `X-RateLimit-*` headers (non-RFC but the de-facto convention
+ * everyone exposes — GitHub, Stripe, Cloudflare). On a 429 we also emit
+ * `Retry-After` per RFC 7231 §7.1.3.
+ */
+function rateLimitHeaders(d: RateLimitDecision): Record<string, string> {
+  const h: Record<string, string> = {
+    "X-RateLimit-Limit": String(d.limit),
+    "X-RateLimit-Remaining": String(d.remaining),
+    "X-RateLimit-Reset": String(Math.floor(d.resetAtMs / 1000)),
+  };
+  if (!d.allowed) h["Retry-After"] = String(d.retryAfterSec);
+  return h;
+}
+
+function rateLimit429(scope: "ip" | "key", d: RateLimitDecision): Response {
+  const noun = scope === "ip" ? "IP" : "BYOK key";
+  return json(
+    {
+      error: `rate limit exceeded: ${d.limit} sims per window per ${noun}. Retry in ${d.retryAfterSec}s.`,
+      scope,
+      retryAfterSec: d.retryAfterSec,
+    },
+    {
+      status: 429,
+      headers: { ...corsHeaders(), ...rateLimitHeaders(d) },
+    },
+  );
+}
+
 async function handleCreate(req: Request): Promise<Response> {
+  // IP rate limit FIRST — before body parse — so malformed/oversized
+  // payloads still count toward the cap. Otherwise an attacker could
+  // bypass the limit by spamming junk payloads that fail validation.
+  const ip = getClientIp(req);
+  const ipDecision = apiRateLimiter.check(`ip:${ip}`, RATE_LIMIT_PER_IP);
+  if (!ipDecision.allowed) return rateLimit429("ip", ipDecision);
+
   const body = (await req.json()) as CreateSimBody;
   if (!body.config || !body.tickConfig) {
-    return json({ error: "config and tickConfig are required" }, { status: 400 });
+    return json(
+      { error: "config and tickConfig are required" },
+      { status: 400, headers: { ...corsHeaders(), ...rateLimitHeaders(ipDecision) } },
+    );
   }
 
   // BYOK: validate the OpenRouter key shape, then keep it ONLY in this
@@ -104,10 +163,19 @@ async function handleCreate(req: Request): Promise<Response> {
     if (!isPlausibleOpenRouterKey(body.byokOpenRouterKey)) {
       return json(
         { error: "byokOpenRouterKey must look like an OpenRouter key (sk-or-...)" },
-        { status: 400, headers: corsHeaders() },
+        { status: 400, headers: { ...corsHeaders(), ...rateLimitHeaders(ipDecision) } },
       );
     }
     byokKey = body.byokOpenRouterKey.trim();
+  }
+
+  // Per-key cap is independent of per-IP — caught here so BYOK abusers
+  // can't dodge by rotating IPs. Fingerprint avoids holding the full key
+  // in the limiter map. Only enforced when a key is actually present.
+  let keyDecision: RateLimitDecision | null = null;
+  if (byokKey) {
+    keyDecision = apiRateLimiter.check(`key:${fingerprintKey(byokKey)}`, RATE_LIMIT_PER_KEY);
+    if (!keyDecision.allowed) return rateLimit429("key", keyDecision);
   }
   if (REQUIRE_BYOK && !byokKey) {
     return json(
@@ -263,9 +331,17 @@ async function handleCreate(req: Request): Promise<Response> {
     spawnWorker(simId, workerEnv);
   }
 
+  // Echo rate-limit state on the success path too — clients can self-pace
+  // off `X-RateLimit-Remaining` instead of waiting for a 429. When BYOK
+  // is in play we surface the tighter of the two windows (key cap is
+  // typically larger than IP cap, but never assume).
+  const surfaceDecision: RateLimitDecision =
+    keyDecision !== null && keyDecision.remaining < ipDecision.remaining
+      ? keyDecision
+      : ipDecision;
   return json(
     { simId, status: "starting", agentCount: resolvedAgents.length, deploymentPlan },
-    { status: 201, headers: corsHeaders() },
+    { status: 201, headers: { ...corsHeaders(), ...rateLimitHeaders(surfaceDecision) } },
   );
 }
 
@@ -595,6 +671,15 @@ function startTailers(): void {
   }, 250);
 }
 
+function startRateLimitPruner(): void {
+  // Sweep expired buckets every 5 min so the limiter map can't grow
+  // unbounded on a long-running App Runner instance. One bucket lives
+  // ~RATE_LIMIT_WINDOW_MS at most; pruning earlier just trims stale ones.
+  setInterval(() => {
+    apiRateLimiter.prune();
+  }, 5 * 60_000);
+}
+
 function onWsOpen(ws: { data: { simId: string }; send: (d: string) => void }) {
   const { simId } = ws.data;
   if (!wsClients.has(simId)) wsClients.set(simId, new Set());
@@ -621,6 +706,7 @@ function onWsClose(ws: { data: { simId: string }; send: (d: string) => void }) {
 mkdirSync(RUNS_DIR, { recursive: true });
 registerDemos();
 startTailers();
+startRateLimitPruner();
 
 interface WsData {
   simId: string;
