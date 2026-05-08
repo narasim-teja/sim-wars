@@ -12,6 +12,13 @@ import type { RosterPreset } from "./api";
 /** Hard cap matching the backend `MAX_AGENTS` constant. */
 export const MAX_AGENTS = 5000;
 
+/**
+ * On-chain cap. Mirrors the backend `MAX_ONCHAIN_AGENTS` constant. The
+ * server returns 400 above this, so the UI clamps proactively when the
+ * on-chain toggle is on.
+ */
+export const MAX_ONCHAIN_AGENTS = 50;
+
 /** Default agent count used when launching a custom (extraction-driven) run. */
 export const DEFAULT_AGENT_COUNT = 100;
 

@@ -12,7 +12,7 @@ import { normalizeConfig } from "../scenarios/normalize";
 import { perRunDeploymentPath } from "../chain/sdk";
 import { buildDeploymentPlan } from "../chain/deployment-plan";
 import { expandRoster, type RosterPreset } from "../agents/roster";
-import { MAX_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
+import { MAX_AGENTS, MAX_ONCHAIN_AGENTS, DEFAULT_AGENT_COUNT } from "../constants";
 import {
   apiRateLimiter,
   fingerprintKey,
@@ -313,6 +313,22 @@ async function handleCreate(req: Request): Promise<Response> {
     if (resolvedAgents.length === 0) {
       return json({ error: "roster expander produced 0 agents — bad ratios?" }, { status: 500 });
     }
+  }
+
+  // On-chain cap: deployer SOL + devnet RPC don't scale to MAX_AGENTS, so
+  // the public website is held to a tighter ceiling. Self-hosted users can
+  // raise it via SIM_ONCHAIN_MAX_AGENTS.
+  if (body.onChain && resolvedAgents.length > MAX_ONCHAIN_AGENTS) {
+    return json(
+      {
+        error:
+          `on-chain runs are capped at ${MAX_ONCHAIN_AGENTS} agents on this deployment ` +
+          `(got ${resolvedAgents.length}). Off-chain runs can use up to ${MAX_AGENTS}. ` +
+          `For larger on-chain runs, self-host: the codebase is open-source — set ` +
+          `SIM_ONCHAIN_MAX_AGENTS to your desired cap.`,
+      },
+      { status: 400, headers: corsHeaders() },
+    );
   }
 
   const deploymentPlan = buildDeploymentPlan({

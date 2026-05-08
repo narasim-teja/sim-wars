@@ -24,13 +24,18 @@ DEPLOY_DIR="${REPO_ROOT}/target/deploy"
 
 PROGRAMS=("token_mint" "amm_dex" "staking" "governance")
 
-# JSON-path mapping: anchor program name → key in devnet-programs.json
-declare -A JSON_KEY=(
-  ["token_mint"]="tokenMint"
-  ["amm_dex"]="ammDex"
-  ["staking"]="staking"
-  ["governance"]="governance"
-)
+# JSON-path mapping: anchor program name → key in devnet-programs.json.
+# Implemented as a case statement (vs `declare -A`) so the script runs on
+# macOS's stock bash 3.2 which lacks associative arrays.
+json_key_for() {
+  case "$1" in
+    token_mint)  echo "tokenMint" ;;
+    amm_dex)     echo "ammDex" ;;
+    staking)     echo "staking" ;;
+    governance)  echo "governance" ;;
+    *)           echo "ERROR: unknown program $1" >&2; return 1 ;;
+  esac
+}
 
 # Print a step header
 step() {
@@ -53,7 +58,9 @@ need solana-keygen
 
 step "1/5  Cluster + wallet sanity"
 solana config set --url https://api.devnet.solana.com >/dev/null
-WALLET="$(solana config get keypair | awk -F': ' '{print $2}')"
+# `solana config get` emits trailing whitespace after the value; strip it
+# (and any quoting) so paths with no space don't end up looking like they have one.
+WALLET="$(solana config get keypair | awk -F': ' '{print $2}' | sed 's/[[:space:]]*$//')"
 PUBKEY="$(solana-keygen pubkey "${WALLET}")"
 BAL_LAMPORTS="$(solana balance --lamports | awk '{print $1}')"
 BAL_SOL="$(awk -v l="${BAL_LAMPORTS}" 'BEGIN{ printf "%.4f", l/1000000000 }')"
@@ -62,9 +69,9 @@ echo "  wallet:    ${WALLET}"
 echo "  pubkey:    ${PUBKEY}"
 echo "  balance:   ${BAL_SOL} SOL"
 
-if (( BAL_LAMPORTS < 5_000_000_000 )); then
+if (( BAL_LAMPORTS < 5000000000 )); then
   echo
-  echo "  WARN: balance under 5 SOL. Each program deploy costs ~3–5 SOL."
+  echo "  WARN: balance under 5 SOL. Each program deploy costs ~2–5 SOL."
   echo "        Run: solana airdrop 5   (devnet airdrop is rate-limited; may need"
   echo "        multiple calls or a faucet bot like https://faucet.solana.com)"
   read -r -p "  continue anyway? [y/N] " yn
@@ -107,7 +114,7 @@ jq --arg cluster "devnet" \
 for name in "${PROGRAMS[@]}"; do
   kp="${DEPLOY_DIR}/${name}-keypair.json"
   pubkey="$(solana-keygen pubkey "${kp}")"
-  json_key="${JSON_KEY[$name]}"
+  json_key="$(json_key_for "${name}")"
   echo "  ${json_key}: ${pubkey}"
   jq --arg k "${json_key}" --arg v "${pubkey}" \
      '.programs[$k] = $v' \

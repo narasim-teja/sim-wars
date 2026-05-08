@@ -96,10 +96,30 @@ interface Args {
   simId: string | null;
   withStaking: boolean;
   withGovernance: boolean;
-  /** Funding SOL per agent. Default 5; for devnet you may want less. */
+  /**
+   * Funding SOL per agent. Default is cluster-aware: 5 on localnet (cheap,
+   * the test validator mints SOL freely) and 0.05 on devnet (rate-limited
+   * faucet — a 100-agent run on the localnet default would need 500 SOL,
+   * which no devnet wallet ever has). Override with `--sol-per-agent`.
+   */
   solPerAgent: number;
   /** Where to write the deployment manifest. */
   outputPath: string;
+}
+
+/**
+ * Pick a sensible per-agent funding default by inspecting ANCHOR_PROVIDER_URL
+ * and SOLANA_NETWORK. We can't read the provider here yet (parseArgs runs
+ * before the SDK), so fall back to a string sniff.
+ */
+function defaultSolPerAgent(env: NodeJS.ProcessEnv = process.env): number {
+  const network = (env.SOLANA_NETWORK ?? "").toLowerCase();
+  const url = env.ANCHOR_PROVIDER_URL ?? "";
+  const looksLikeLocalnet =
+    network === "localnet" ||
+    url.includes("127.0.0.1") ||
+    url.includes("localhost");
+  return looksLikeLocalnet ? 5 : 0.05;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -107,7 +127,7 @@ function parseArgs(argv: string[]): Args {
   let simId: string | null = null;
   let withStaking = false;
   let withGovernance = false;
-  let solPerAgent = 5;
+  let solPerAgent = defaultSolPerAgent();
   let outputPath = "";
 
   for (let i = 0; i < argv.length; i++) {

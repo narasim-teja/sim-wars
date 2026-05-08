@@ -21,6 +21,7 @@ import {
   AGENT_COUNT_STEPS,
   DEFAULT_AGENT_COUNT,
   MAX_AGENTS,
+  MAX_ONCHAIN_AGENTS,
   ROSTER_PRESET_LABELS,
   previewRoster,
   rosterPresetFromProtocolKind,
@@ -115,7 +116,11 @@ export default function HomeClient() {
   }
 
   const rosterPreset: RosterPreset = presetOverride ?? autoPreset;
-  const agentCount: number = agentCountOverride ?? autoAgentCount;
+  // On-chain mode caps agents at MAX_ONCHAIN_AGENTS — deployer SOL + devnet
+  // RPC don't scale to MAX_AGENTS. Off-chain stays at the full ceiling.
+  const effectiveMaxAgents = onChain ? MAX_ONCHAIN_AGENTS : MAX_AGENTS;
+  const rawAgentCount = agentCountOverride ?? autoAgentCount;
+  const agentCount = Math.min(rawAgentCount, effectiveMaxAgents);
 
   /**
    * Roster preview: the *backend* expander runs at launch, but the UI shows
@@ -223,8 +228,12 @@ export default function HomeClient() {
         return;
       }
     }
-    if (agentCount < 1 || agentCount > MAX_AGENTS) {
-      setError(`agentCount must be 1–${MAX_AGENTS}`);
+    if (agentCount < 1 || agentCount > effectiveMaxAgents) {
+      setError(
+        onChain
+          ? `On-chain runs are capped at ${MAX_ONCHAIN_AGENTS} agents on this site. Off-chain supports up to ${MAX_AGENTS}.`
+          : `agentCount must be 1–${MAX_AGENTS}`,
+      );
       return;
     }
 
@@ -540,7 +549,12 @@ export default function HomeClient() {
             />
 
             {/* Agent count slider */}
-            <AgentCountSlider value={agentCount} onChange={setAgentCountOverride} />
+            <AgentCountSlider
+              value={agentCount}
+              onChange={setAgentCountOverride}
+              max={effectiveMaxAgents}
+              capReason={onChain ? "On-chain mode is capped at " + MAX_ONCHAIN_AGENTS + " agents (deployer SOL + devnet RPC). Self-host to lift this." : null}
+            />
 
             {sendStaticRoster && activeAgents ? (
               // Static roster path: show the hand-written personas verbatim.
@@ -909,20 +923,43 @@ function HeliusByokField({
  * input for power users who want a value the slider doesn't hit. Keeps the
  * common cases one click away while still allowing 137-agent stress tests.
  */
-function AgentCountSlider({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  // Slider position = nearest step index. Free-form input bypasses snapping.
+function AgentCountSlider({
+  value,
+  onChange,
+  max,
+  capReason,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  max: number;
+  /** When set, render a one-line caption explaining why the slider is capped. */
+  capReason: string | null;
+}) {
+  // Filter out steps above the active cap so the slider track only shows
+  // selectable positions. When `max < MAX_AGENTS` (i.e. on-chain mode) we
+  // also append the cap itself if it isn't already a step, so the user can
+  // ride the slider all the way to the limit.
+  const visibleSteps = useMemo<number[]>(() => {
+    // Widen the literal-union element type from AGENT_COUNT_STEPS so we
+    // can push the cap onto the end when it isn't already a step.
+    const filtered: number[] = AGENT_COUNT_STEPS.filter((s) => s <= max);
+    if (filtered[filtered.length - 1] !== max) filtered.push(max);
+    return filtered;
+  }, [max]);
+
+  // Slider position = nearest visible step. Free-form input bypasses snapping.
   const stepIndex = useMemo(() => {
     let best = 0;
     let bestDiff = Infinity;
-    for (let i = 0; i < AGENT_COUNT_STEPS.length; i++) {
-      const d = Math.abs(AGENT_COUNT_STEPS[i] - value);
+    for (let i = 0; i < visibleSteps.length; i++) {
+      const d = Math.abs(visibleSteps[i] - value);
       if (d < bestDiff) {
         best = i;
         bestDiff = d;
       }
     }
     return best;
-  }, [value]);
+  }, [value, visibleSteps]);
   const cost = useMemo(() => estimateCost(value), [value]);
   return (
     <div className="flex flex-col gap-2 rounded border border-zinc-200 bg-white p-3">
@@ -933,22 +970,22 @@ function AgentCountSlider({ value, onChange }: { value: number; onChange: (n: nu
         <input
           type="number"
           min={1}
-          max={MAX_AGENTS}
+          max={max}
           value={value}
-          onChange={(e) => onChange(Math.max(1, Math.min(MAX_AGENTS, Number(e.target.value) || 1)))}
+          onChange={(e) => onChange(Math.max(1, Math.min(max, Number(e.target.value) || 1)))}
           className="w-20 rounded border border-zinc-300 bg-white px-2 py-1 text-right font-mono text-[12px] text-zinc-900 outline-none focus:border-zinc-900"
         />
       </div>
       <input
         type="range"
         min={0}
-        max={AGENT_COUNT_STEPS.length - 1}
+        max={visibleSteps.length - 1}
         value={stepIndex}
-        onChange={(e) => onChange(AGENT_COUNT_STEPS[Number(e.target.value)])}
+        onChange={(e) => onChange(visibleSteps[Number(e.target.value)])}
         className="h-1 w-full cursor-pointer appearance-none rounded bg-zinc-200 accent-zinc-900"
       />
       <div className="flex justify-between font-mono text-[10px] text-zinc-400">
-        {AGENT_COUNT_STEPS.map((s) => (
+        {visibleSteps.map((s) => (
           <span key={s} className={cn(s === value && "text-zinc-900")}>{s.toLocaleString()}</span>
         ))}
       </div>
@@ -956,6 +993,11 @@ function AgentCountSlider({ value, onChange }: { value: number; onChange: (n: nu
         <span>≈ {cost.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD/30-tick run</span>
         <span className="text-right">{value > 1000 ? "Helius RPC recommended" : "localnet OK"}</span>
       </div>
+      {capReason && (
+        <p className="border-t border-amber-200 bg-amber-50 px-2 py-1.5 font-mono text-[10px] leading-4 text-amber-900">
+          {capReason}
+        </p>
+      )}
     </div>
   );
 }

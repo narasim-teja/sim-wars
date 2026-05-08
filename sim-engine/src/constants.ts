@@ -18,6 +18,19 @@
 export const MAX_AGENTS = Number(process.env.SIM_MAX_AGENTS) || 5000;
 
 /**
+ * On-chain cap. Below `MAX_AGENTS` because on-chain deploy hits real
+ * resource limits the off-chain path doesn't:
+ *   - per-agent SOL funding from the deployer keypair (~0.05 SOL × N)
+ *   - devnet ATA-create / airdrop throughput
+ *   - per-tick RPC fan-out
+ *
+ * 50 is a deliberate pragmatic cap for the public website. Self-hosted
+ * users can raise it via `SIM_ONCHAIN_MAX_AGENTS` — the codebase is
+ * open-source.
+ */
+export const MAX_ONCHAIN_AGENTS = Number(process.env.SIM_ONCHAIN_MAX_AGENTS) || 50;
+
+/**
  * Default agent count when a request omits both `agents[]` and `agentCount`.
  * Mirrors the canonical 20-agent LUNA scenario.
  */
