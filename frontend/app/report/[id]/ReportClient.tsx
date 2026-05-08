@@ -30,7 +30,7 @@ export function ReportClient({ simId }: { simId: string }) {
         count++;
         setAttempts(count);
         if (count >= POLL_MAX_ATTEMPTS) {
-          setError("Report not ready after 3 minutes — sim may still be running, or it failed before generating one.");
+          setError("Report not ready after 3 minutes. The sim may still be running, or it failed before generating one.");
           return;
         }
         timer = setTimeout(poll, POLL_INTERVAL_MS);

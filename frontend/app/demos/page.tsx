@@ -33,9 +33,9 @@ export default async function DemosPage() {
             Pre-recorded simulation demos
           </h1>
           <p className="max-w-2xl text-[14px] leading-relaxed text-zinc-600">
-            Each card opens a full replay — token price, agent feed, governance traffic, on-chain
-            transactions, and the post-sim resilience report. No API key needed; demos are pre-recorded
-            event streams baked into the image.
+            Each card opens a full replay: token price, agent feed, governance traffic, on-chain
+            transactions, and the post-sim resilience report. No API key needed. Demos are
+            pre-recorded event streams baked into the image.
           </p>
           <p className="text-[12px] text-zinc-500">
             Want to run your own protocol?{" "}

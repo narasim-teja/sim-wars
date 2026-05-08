@@ -30,7 +30,7 @@ export function CostMeter({ totalUsage, lastTickUsage, costSeries }: CostMeterPr
           value={`${cacheHitPct.toFixed(1)}%`}
           accent={cacheHitPct >= 15 ? "good" : cacheHitPct >= 5 ? "warn" : undefined}
         />
-        <Stat label="$/call" value={totalUsage.calls > 0 ? `$${avgCostPerCall.toFixed(6)}` : "—"} />
+        <Stat label="$/call" value={totalUsage.calls > 0 ? `$${avgCostPerCall.toFixed(6)}` : "-"} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

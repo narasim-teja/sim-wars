@@ -22,7 +22,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
   {
     id: "luna-20",
     label: "LUNA / UST · 20 agents",
-    description: "Full Phase-2 roster reproducing the May 2022 death spiral. Whales, governance attackers, sybil swarm, MEV bot, insiders, panic seller — the works.",
+    description: "Full Phase-2 roster reproducing the May 2022 death spiral. Whales, governance attackers, sybil swarm, MEV bot, insiders, panic seller. The works.",
     payload: luna20 as ScenarioPayload,
     defaultMaxTicks: 50,
     validated: true,
@@ -30,7 +30,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
   {
     id: "luna-8",
     label: "LUNA / UST · 8 agents",
-    description: "Slimmed roster — 2 whales, 2 farmers, 1 degen, 1 governance attacker, 2 long-term holders. Faster iteration, same dynamics.",
+    description: "Slimmed roster: 2 whales, 2 farmers, 1 degen, 1 governance attacker, 2 long-term holders. Faster iteration, same dynamics.",
     payload: luna8 as ScenarioPayload,
     defaultMaxTicks: 30,
     validated: true,

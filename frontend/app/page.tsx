@@ -39,8 +39,6 @@ function Hero() {
         <div className="flex flex-col gap-6">
           <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
             <span>An adversarial swarm engine</span>
-            <span className="text-zinc-300">/</span>
-            <span>v0.2 · phase 2 preview</span>
           </div>
           <h1 className="text-[44px] font-semibold leading-[1.05] tracking-tight text-zinc-900 sm:text-[56px]">
             Upload your tokenomics.
@@ -48,12 +46,12 @@ function Hero() {
             <span className="text-zinc-400">Stress-test the future.</span>
           </h1>
           <p className="max-w-xl text-[15px] leading-7 text-zinc-600">
-            Drop a whitepaper or a pre-built scenario. Sim Wars spawns from{" "}
+            Drop a whitepaper or a pre-built scenario. Sim Wars spawns up to{" "}
             <em className="font-semibold not-italic text-zinc-900">
-              8 to {MAX_AGENTS.toLocaleString()} LLM-powered adversaries
-            </em>{" "}
-            — whales, governance attackers, MEV bots, sybil swarms — and lets them attack
-            your design until it survives, or speedruns a death spiral.
+              {MAX_AGENTS.toLocaleString()} LLM-powered adversaries
+            </em>
+            : whales, governance attackers, MEV bots, sybil swarms. They attack your design
+            until it survives, or speedruns a death spiral.
           </p>
           <p className="font-mono text-[12px] uppercase tracking-[0.18em] text-zinc-700">
             <span className="border-b border-zinc-300 pb-0.5">

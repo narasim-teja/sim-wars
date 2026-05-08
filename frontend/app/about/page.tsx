@@ -18,7 +18,7 @@ export default function AboutPage() {
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">About SIMWARS</h1>
           <p className="text-[14px] leading-relaxed text-zinc-600">
             An adversarial swarm engine that runs LLM-driven personas against a tokenomic spec.
-            Open-source — every guarantee on this page is verifiable in the repo.
+            Open-source. Every guarantee on this page is verifiable in the repo.
           </p>
         </header>
 
@@ -33,13 +33,13 @@ export default function AboutPage() {
             On the wire the key flows from the browser to the API server over HTTPS, then directly
             into the spawned worker subprocess via environment variables. The server&apos;s persisted{" "}
             <code className="rounded bg-zinc-100 px-1">scenario.json</code> is written without the
-            key field — verified by an integration test in{" "}
+            key field. Verified by an integration test in{" "}
             <code className="rounded bg-zinc-100 px-1">
               src/api/server.integration.test.ts
             </code>
             .
           </p>
-          <p>Demo replays don&apos;t hit the LLM at all — they&apos;re NDJSON recordings.</p>
+          <p>Demo replays don&apos;t hit the LLM at all. They&apos;re NDJSON recordings.</p>
         </Section>
 
         <Section icon={<ShieldCheck className="h-4 w-4" />} title="Safety properties">
@@ -47,7 +47,7 @@ export default function AboutPage() {
             <li>HTTPS-only in production (TLS terminated by AWS App Runner).</li>
             <li>API key never written to disk or any log line.</li>
             <li>Per-process scope: key dies with the worker process.</li>
-            <li>Open-source — audit the binding in commit{" "}
+            <li>Open-source. Audit the binding in commit{" "}
               <a className="underline-offset-2 hover:underline" href={`${REPO_URL}/commit/${GIT_SHA}`}>
                 {GIT_SHA}
               </a>.

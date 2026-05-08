@@ -5,6 +5,19 @@ import { Copy, Download, ExternalLink } from "lucide-react";
 import type { SimulationReport, ResilienceGrade, ChainActivity, FieldSources } from "@/lib/report";
 import { cn } from "@/lib/utils";
 
+/**
+ * The report writer falls back to "TOKEN" / "USDC" when the scenario
+ * doesn't carry an explicit symbol. Those are placeholders, not protocol
+ * data, so we hide them in the header instead of rendering "TOKEN" as if
+ * it were the actual symbol.
+ */
+function isMeaningfulSymbol(sym?: string): sym is string {
+  if (!sym) return false;
+  const trimmed = sym.trim();
+  if (trimmed.length === 0) return false;
+  return !/^(token|usdc)$/i.test(trimmed);
+}
+
 const GRADE_COLOR: Record<ResilienceGrade, { bg: string; ring: string; fg: string }> = {
   S: { bg: "bg-emerald-50",  ring: "ring-emerald-200", fg: "text-emerald-700" },
   A: { bg: "bg-emerald-50",  ring: "ring-emerald-200", fg: "text-emerald-700" },
@@ -43,35 +56,43 @@ export function ReportPanel({
     <article className="thin-scroll mx-auto flex w-full max-w-5xl flex-col gap-5 overflow-y-auto bg-white p-6 print:max-w-none print:overflow-visible print:p-0">
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-5">
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500">
             Sim-wars · post-mortem
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-            Resilience report
-            {report.meta.protocolName && (
-              <span className="ml-2 text-zinc-500">· {report.meta.protocolName}</span>
+          <h1 className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold tracking-tight text-zinc-900">
+            <span>Resilience report</span>
+            {(report.meta.protocolName || isMeaningfulSymbol(report.meta.tokenSymbol)) && (
+              <span className="text-zinc-300">·</span>
             )}
-            {report.meta.tokenSymbol && (
-              <span className="ml-1.5 font-mono text-base text-zinc-400">{report.meta.tokenSymbol}</span>
+            {report.meta.protocolName && (
+              <span className="text-zinc-500">{report.meta.protocolName}</span>
+            )}
+            {isMeaningfulSymbol(report.meta.tokenSymbol) && (
+              <span className="rounded-sm bg-zinc-100 px-1.5 py-0.5 font-mono text-[12px] tracking-tight text-zinc-700">
+                {report.meta.tokenSymbol}
+              </span>
             )}
           </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] text-zinc-500">
-            <span>sim {report.simId.slice(0, 12)}</span>
-            <span>·</span>
-            <span>{report.meta.totalTicks} ticks · {report.meta.agentCount} agents</span>
-            <span>·</span>
-            <span className={report.meta.deathSpiralDetected ? "text-red-700" : "text-zinc-500"}>
-              status: {report.meta.finalStatus}
+            <span className="rounded bg-zinc-50 px-1.5 py-0.5 text-zinc-600">
+              {report.simId.slice(0, 8)}
             </span>
-            <span>·</span>
+            <span>{report.meta.totalTicks} ticks</span>
+            <span className="text-zinc-300">·</span>
+            <span>{report.meta.agentCount} agents</span>
+            <span className="text-zinc-300">·</span>
+            <span className={report.meta.deathSpiralDetected ? "text-red-700" : "text-zinc-500"}>
+              {report.meta.finalStatus.replace(/_/g, " ")}
+            </span>
+            <span className="text-zinc-300">·</span>
             <span>{new Date(report.meta.generatedAtMs).toLocaleString()}</span>
             <LLMBadge model={report.meta.llmModel} />
           </div>
         </div>
 
         {/* Resilience grade pill */}
-        <div className={cn("flex flex-col items-end gap-1 rounded-md border px-4 py-3 text-right ring-1", palette.bg, palette.ring)}>
+        <div className={cn("flex shrink-0 flex-col items-end gap-1 rounded-md border px-4 py-3 text-right ring-1", palette.bg, palette.ring)}>
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">Resilience</div>
           <div className={cn("text-5xl font-bold tabular-nums leading-none", palette.fg)}>{grade}</div>
           <div className={cn("font-mono text-[11px] tabular-nums", palette.fg)}>
@@ -217,7 +238,7 @@ export function ReportPanel({
                   <td className="py-1.5 pr-3 text-right tabular-nums">{r.totalActions}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{formatN(r.largestTradeAmount)}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">
-                    {r.firstExitTick == null ? "—" : `t${r.firstExitTick}`}
+                    {r.firstExitTick == null ? "-" : `t${r.firstExitTick}`}
                   </td>
                   <td className="py-1.5 text-zinc-600">{r.characterization}</td>
                 </tr>
@@ -440,7 +461,7 @@ function FieldProvenanceBanner({ sources }: { sources: FieldSources }) {
       </div>
       {defaulted.length > 0 && (
         <p className="mt-1.5 text-[11.5px] leading-5 text-zinc-600">
-          Sections marked <span className="font-mono">default</span> were not in the source — they
+          Sections marked <span className="font-mono">default</span> were not in the source. They
           ran with schema fallback values. Recommendations targeting these sections are
           suppressed automatically; treat any narrative claims about them as illustrative.
         </p>

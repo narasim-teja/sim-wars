@@ -25,15 +25,15 @@ export function ReplayCards({ demos }: { demos: DemoCard[] }) {
           <div className="flex flex-col gap-2">
             <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
               <span className="block h-2 w-2 rounded-full bg-zinc-900" />
-              Watch a replay — no key required
+              Watch a replay · no key required
             </span>
             <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
               Three pre-recorded simulations.
             </h2>
             <p className="max-w-xl text-[14px] leading-relaxed text-zinc-600">
-              Each card opens a full event-stream replay — token price, agent feed,
-              governance traffic, post-sim resilience report. Death spiral or survival,
-              the data is from real LLM-driven runs.
+              Each card opens a full event-stream replay: token price, agent feed,
+              governance traffic, and the post-sim resilience report. Death spiral or
+              survival, the data is from real LLM-driven runs.
             </p>
           </div>
           {overflow > 0 && (

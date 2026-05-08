@@ -153,7 +153,7 @@ export default function HomeClient() {
     if (customConfig.amm.initialLiquidity <= 0) blockers.push("amm.initialLiquidity must be > 0");
     const allocSum = customConfig.token.allocations.reduce((s, a) => s + (a.percent || 0), 0);
     if (Math.abs(allocSum - 100) >= 0.5 && customConfig.token.allocations.length > 0) {
-      warnings.push(`allocations sum to ${allocSum.toFixed(2)}%, not 100% — engine will run anyway`);
+      warnings.push(`allocations sum to ${allocSum.toFixed(2)}%, not 100%. Engine will run anyway.`);
     }
     return { ok: blockers.length === 0, blockers, warnings };
   }, [mode, customConfig]);
@@ -316,7 +316,7 @@ export default function HomeClient() {
             </div>
             <h2 className="text-4xl font-semibold tracking-tight text-zinc-900">Ready</h2>
             <p className="max-w-md text-[14px] leading-7 text-zinc-600">
-              Engine is idle. Pick a pre-built scenario or upload your own whitepaper — Sim Wars
+              Engine is idle. Pick a pre-built scenario or upload your own whitepaper. Sim Wars
               extracts tokenomics and seeds a fresh adversarial run.
             </p>
 
@@ -334,8 +334,19 @@ export default function HomeClient() {
               <ModeToggle mode={mode} onChange={setMode} />
             </div>
 
-            {mode === "preset" ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+            {/* Both modes render into the same grid cell so the container's
+                height is always the max of the two — switching tabs no
+                longer bounces the page. Inactive mode keeps its DOM but is
+                hidden via `invisible` (preserves component state, no
+                interactivity). */}
+            <div className="grid">
+              <div
+                className={cn(
+                  "col-start-1 row-start-1 grid gap-3 sm:grid-cols-2",
+                  mode === "preset" ? "" : "pointer-events-none invisible",
+                )}
+                aria-hidden={mode !== "preset"}
+              >
                 {SCENARIO_PRESETS.map((s) => {
                   const active = s.id === selected;
                   return (
@@ -345,6 +356,7 @@ export default function HomeClient() {
                         setSelected(s.id);
                         setMaxTicks(s.defaultMaxTicks);
                       }}
+                      tabIndex={mode === "preset" ? 0 : -1}
                       className={cn(
                         "flex cursor-pointer flex-col gap-1.5 rounded-md border bg-white p-4 text-left transition-all",
                         active
@@ -364,14 +376,21 @@ export default function HomeClient() {
                   );
                 })}
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
+
+              <div
+                className={cn(
+                  "col-start-1 row-start-1 flex flex-col gap-3",
+                  mode === "custom" ? "" : "pointer-events-none invisible",
+                )}
+                aria-hidden={mode !== "custom"}
+              >
                 <CustomSource onExtracted={onExtracted} onCleared={onCustomCleared} />
 
                 {customReady && customConfig && (
                   <div className="flex flex-col gap-3">
                     <button
                       onClick={() => setEditorOpen((v) => !v)}
+                      tabIndex={mode === "custom" ? 0 : -1}
                       className="flex cursor-pointer items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-left hover:border-zinc-400"
                     >
                       <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-700">
@@ -409,7 +428,7 @@ export default function HomeClient() {
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>
@@ -446,7 +465,7 @@ export default function HomeClient() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
               <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-                02 / Adversary roster — {agentCount.toLocaleString()} agents
+                02 / Adversary roster · {agentCount.toLocaleString()} agents
                 <span className="ml-2 normal-case tracking-normal text-zinc-400">
                   ({rosterPreview.totalArchetypes} archetypes · {ROSTER_PRESET_LABELS[rosterPreset].label})
                 </span>
@@ -468,25 +487,27 @@ export default function HomeClient() {
 
             {sendStaticRoster && activeAgents ? (
               // Static roster path: show the hand-written personas verbatim.
-              <div className="grid gap-1.5">
+              // Grid wraps horizontally so a 20-agent preset doesn't read as
+              // a long vertical scroll; cards still show id + label per row.
+              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                 {activeAgents.slice(0, 100).map((a) => {
                   const t = agentTypeFromId(a.id);
                   return (
                     <div
                       key={a.id}
-                      className="flex items-center gap-3 rounded border border-zinc-100 bg-white px-3 py-1.5"
+                      className="flex items-center gap-2 rounded border border-zinc-100 bg-white px-2.5 py-1.5"
                     >
                       <span
-                        className="h-2.5 w-2.5 rounded-full"
+                        className="h-2 w-2 shrink-0 rounded-full"
                         style={{ background: AGENT_COLORS[t] }}
                       />
-                      <span className="font-mono text-[12px] font-semibold text-zinc-900">{a.id}</span>
-                      <span className="ml-auto font-mono text-[11px] text-zinc-500">{AGENT_LABELS[t]}</span>
+                      <span className="truncate font-mono text-[11.5px] font-semibold text-zinc-900">{a.id}</span>
+                      <span className="ml-auto truncate font-mono text-[10px] text-zinc-500">{AGENT_LABELS[t]}</span>
                     </div>
                   );
                 })}
                 {activeAgents.length > 100 && (
-                  <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-1.5 font-mono text-[11px] text-zinc-500">
+                  <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-1.5 font-mono text-[11px] text-zinc-500 sm:col-span-2 lg:col-span-3">
                     + {activeAgents.length - 100} more personas hidden
                   </div>
                 )}
@@ -564,31 +585,33 @@ export default function HomeClient() {
               />
             )}
 
-            {/* BYOK key strip — visible state of the key the run will use. */}
+            {/* BYOK key strip: state on the left, action on the right.
+                Single-line; min-w-0 + truncate keeps long masked keys from
+                pushing the action button into a wrap. */}
             <div
               className={cn(
-                "flex items-center justify-between gap-3 rounded border px-3 py-2 font-mono text-[11px]",
+                "flex items-center gap-3 rounded border px-3 py-2 font-mono text-[11px]",
                 byokKey
                   ? "border-emerald-200 bg-emerald-50 text-emerald-900"
                   : "border-amber-200 bg-amber-50 text-amber-900",
               )}
             >
-              <span className="flex items-center gap-2">
-                <span className="uppercase tracking-[0.22em]">openrouter key</span>
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="shrink-0 uppercase tracking-[0.22em]">key</span>
                 {byokKey ? (
                   <>
-                    <span className="text-emerald-800">{maskKey(byokKey)}</span>
-                    <span className="text-emerald-700/70 normal-case tracking-normal">
-                      {byokRemembered ? "(remembered)" : "(session only)"}
+                    <span className="truncate text-emerald-800">{maskKey(byokKey)}</span>
+                    <span className="shrink-0 text-emerald-700/70 normal-case tracking-normal">
+                      {byokRemembered ? "saved" : "session"}
                     </span>
                   </>
                 ) : (
-                  <span className="text-amber-800 normal-case tracking-normal">
-                    not set — required for live runs
+                  <span className="truncate text-amber-800 normal-case tracking-normal">
+                    not set
                   </span>
                 )}
               </span>
-              <span className="flex items-center gap-2">
+              <span className="flex shrink-0 items-center gap-2">
                 {byokKey && (
                   <button
                     type="button"
