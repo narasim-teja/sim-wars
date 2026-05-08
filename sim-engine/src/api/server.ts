@@ -432,18 +432,38 @@ interface DemoCard {
   deathSpiralDetected: boolean;
 }
 
-const DEMO_METADATA: Record<string, { name: string; description: string }> = {
-  "4cc74be3-fb86-44d5-982d-a6df44a2b68c": {
-    name: "Curve veCRV — sustainable lock",
-    description:
-      "4-year locked veToken design with fee-funded rewards. Shrugs off whale stress, governance attacks, and treasury raids; price wobbles but the lock kills the immediate-unstake-then-sell loop.",
-  },
-  "b3c55764-eef8-4e1b-8970-c6305d85f5f8": {
-    name: "Uniswap UNI — community float",
-    description:
-      "60% community allocation with team/investor vesting. Governance survives quorum probes; price recovers after a coordinated dump because there's no peg or yield trap to amplify the move.",
-  },
-};
+interface DemoMeta {
+  name: string;
+  description: string;
+}
+
+/**
+ * Each demo directory may include a `meta.json` with `{ name, description }`.
+ * Without it the demo still surfaces, but with placeholder copy. Adding a new
+ * demo is therefore: (1) drop the run dir into `runs-demo/`, (2) write its
+ * `meta.json` — no server-code change required.
+ */
+function readDemoMeta(simId: string): DemoMeta {
+  const metaPath = join(DEMO_RUNS_DIR, simId, "meta.json");
+  if (!existsSync(metaPath)) {
+    return {
+      name: `Demo ${simId.slice(0, 8)}`,
+      description: "Pre-recorded simulation replay.",
+    };
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(metaPath, "utf-8")) as Partial<DemoMeta>;
+    return {
+      name: parsed.name?.trim() || `Demo ${simId.slice(0, 8)}`,
+      description: parsed.description?.trim() || "Pre-recorded simulation replay.",
+    };
+  } catch {
+    return {
+      name: `Demo ${simId.slice(0, 8)}`,
+      description: "Pre-recorded simulation replay (meta.json malformed).",
+    };
+  }
+}
 
 function handleDemos(): Response {
   if (!existsSync(DEMO_RUNS_DIR)) {
@@ -456,26 +476,25 @@ function handleDemos(): Response {
     const paths = pathsFor(simId, DEMO_RUNS_DIR);
     if (!existsSync(paths.statusFile)) continue;
     const snap = JSON.parse(readFileSync(paths.statusFile, "utf-8")) as StatusSnapshot;
-    const meta = DEMO_METADATA[simId] ?? {
-      name: `Demo ${simId.slice(0, 8)}`,
-      description: "Pre-recorded simulation replay.",
-    };
+    const meta = readDemoMeta(simId);
     let resilienceScore: number | null = null;
     let resilienceGrade: string | null = null;
     let deathSpiralDetected = false;
     let totalTicks = 0;
     if (existsSync(paths.reportFile)) {
       try {
+        // The report writer nests run-shape fields (totalTicks,
+        // deathSpiralDetected) under `meta`, while resilience fields stay
+        // at the top level. Don't flatten — read each from its real path.
         const report = JSON.parse(readFileSync(paths.reportFile, "utf-8")) as {
           resilienceScore?: number;
           resilienceGrade?: string;
-          deathSpiralDetected?: boolean;
-          totalTicks?: number;
+          meta?: { deathSpiralDetected?: boolean; totalTicks?: number };
         };
         resilienceScore = report.resilienceScore ?? null;
         resilienceGrade = report.resilienceGrade ?? null;
-        deathSpiralDetected = !!report.deathSpiralDetected;
-        totalTicks = report.totalTicks ?? snap.tick;
+        deathSpiralDetected = !!report.meta?.deathSpiralDetected;
+        totalTicks = report.meta?.totalTicks ?? snap.tick;
       } catch { /* fall through */ }
     }
     demos.push({
