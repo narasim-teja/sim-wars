@@ -2,7 +2,7 @@
  * Mirror of sim-engine/src/report/types.ts. Kept in lockstep manually.
  */
 
-import { API_BASE } from "./api";
+import { apiBase } from "./api";
 
 export type ResilienceGrade = "S" | "A" | "B" | "C" | "D" | "F";
 
@@ -117,7 +117,7 @@ export interface SimulationReport {
 }
 
 export async function fetchReport(simId: string): Promise<SimulationReport | null> {
-  const r = await fetch(`${API_BASE}/api/sim/${simId}/report`);
+  const r = await fetch(`${apiBase()}/api/sim/${simId}/report`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`GET /api/sim/${simId}/report failed: ${r.status}`);
   return (await r.json()) as SimulationReport;

@@ -109,14 +109,30 @@ else
   echo "  (service ARN: ${SERVICE_ARN})"
   echo "════════════════════════════════════════════════════════════"
 
-  # update-service applies the new config (including env vars) and triggers
-  # a deployment automatically. We pass the source AND instance config so
-  # any drift in the role ARN or instance size is corrected on each run.
+  # update-service applies the new config (env vars, instance size, etc.)
+  # and triggers a deployment automatically — but ONLY when something in
+  # the config diff'd. When the only change is a new `:latest` image
+  # digest with the same config, update-service is a silent no-op. So we
+  # always follow up with start-deployment to force a fresh image pull.
   aws_run apprunner update-service \
     --service-arn "${SERVICE_ARN}" \
     --source-configuration "${SOURCE_CONFIG}" \
-    --instance-configuration "${INSTANCE_CONFIG}"
-  echo "  update kicked off — deployment runs automatically (~5–10 min)"
+    --instance-configuration "${INSTANCE_CONFIG}" >/dev/null
+  echo "  update-service completed (env / config applied if changed)"
+
+  # Wait for any in-flight operation to settle before start-deployment
+  # — App Runner rejects overlapping ops with InvalidStateException.
+  echo -n "  waiting for service to settle"
+  for _ in $(seq 1 60); do
+    status=$(aws_run apprunner describe-service --service-arn "${SERVICE_ARN}" --query 'Service.Status' --output text 2>/dev/null || true)
+    [ "${status}" = "RUNNING" ] && break
+    echo -n "."
+    sleep 5
+  done
+  echo " ${status}"
+
+  aws_run apprunner start-deployment --service-arn "${SERVICE_ARN}" >/dev/null
+  echo "  start-deployment kicked off — pulls :latest, deploys (~5–10 min)"
 fi
 
 echo

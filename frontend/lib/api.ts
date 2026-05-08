@@ -1,12 +1,35 @@
 import type { StatusSnapshot } from "./types";
 
 /**
- * In production we serve the API and the frontend from the same origin
- * (Caddy fronts both inside the container), so default to relative URLs.
- * Override with NEXT_PUBLIC_SIM_API for local dev pointing at a separate
- * sim-engine on :8787.
+ * Resolve the API base URL for the current execution context.
+ *
+ *   - **Browser** (RSC client component, hooks, route handlers' client):
+ *     prefer `NEXT_PUBLIC_SIM_API` (defaults to `""` → relative URLs
+ *     against the page origin). Caddy fronts both Next and the Bun API
+ *     in production, so same-origin "just works" from the browser.
+ *
+ *   - **Server** (RSC server component, server actions, generateMetadata):
+ *     same-origin doesn't work — server-side fetch has no implicit
+ *     origin and bare paths fail with "Failed to parse URL". Inside
+ *     the production container the Bun API is on the loopback at
+ *     `SIM_API_PORT` (default 8787); use that. `SIM_API_INTERNAL_URL`
+ *     overrides for any future setup that puts the API elsewhere.
+ *
+ * Without this split the demos call from `app/page.tsx` (an RSC) silently
+ * fails in production: `fetch("/api/demos")` throws, the page's catch
+ * swallows it, and the user sees "NO REPLAYS AVAILABLE" even though the
+ * API has the demos.
  */
-export const API_BASE = process.env.NEXT_PUBLIC_SIM_API ?? "";
+export function apiBase(): string {
+  if (typeof window === "undefined") {
+    return (
+      process.env.SIM_API_INTERNAL_URL ??
+      `http://localhost:${process.env.SIM_API_PORT ?? "8787"}`
+    );
+  }
+  return process.env.NEXT_PUBLIC_SIM_API ?? "";
+}
+
 
 /**
  * Roster preset matching the backend `RosterPreset` type. Drives the
@@ -70,7 +93,7 @@ export interface DemoCard {
 }
 
 export async function listDemos(): Promise<DemoCard[]> {
-  const r = await fetch(`${API_BASE}/api/demos`);
+  const r = await fetch(`${apiBase()}/api/demos`);
   if (!r.ok) throw new Error(`GET /api/demos failed: ${r.status}`);
   const body = (await r.json()) as { demos: DemoCard[] };
   return body.demos;
@@ -99,7 +122,7 @@ export interface CreateSimResponse {
 }
 
 export async function createSim(body: CreateSimBody): Promise<CreateSimResponse> {
-  const r = await fetch(`${API_BASE}/api/sim`, {
+  const r = await fetch(`${apiBase()}/api/sim`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -112,7 +135,7 @@ export async function createSim(body: CreateSimBody): Promise<CreateSimResponse>
 }
 
 export async function getStatus(simId: string): Promise<StatusSnapshot> {
-  const r = await fetch(`${API_BASE}/api/sim/${simId}`);
+  const r = await fetch(`${apiBase()}/api/sim/${simId}`);
   if (!r.ok) throw new Error(`GET /api/sim/${simId} failed: ${r.status}`);
   return r.json();
 }
@@ -121,13 +144,13 @@ export async function controlSim(
   simId: string,
   cmd: "pause" | "resume" | "abort",
 ): Promise<{ ok: boolean }> {
-  const r = await fetch(`${API_BASE}/api/sim/${simId}/${cmd}`, { method: "POST" });
+  const r = await fetch(`${apiBase()}/api/sim/${simId}/${cmd}`, { method: "POST" });
   if (!r.ok) throw new Error(`POST /api/sim/${simId}/${cmd} failed: ${r.status}`);
   return r.json();
 }
 
 export async function draftScenario(goal: string): Promise<{ config: unknown; rationale: Record<string, string> }> {
-  const r = await fetch(`${API_BASE}/api/scenarios/draft`, {
+  const r = await fetch(`${apiBase()}/api/scenarios/draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ goal }),

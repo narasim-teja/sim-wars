@@ -14,7 +14,11 @@ export const dynamic = "force-dynamic";
 async function fetchDemosSafe(): Promise<DemoCard[]> {
   try {
     return await listDemos();
-  } catch {
+  } catch (e) {
+    // Surface so the cause is visible in CloudWatch instead of silently
+    // rendering an empty replays section. (This is what hid the v1.0 prod
+    // bug where API_BASE="" produced unparseable relative URLs in RSC.)
+    console.error("[home page] listDemos failed:", e);
     return [];
   }
 }

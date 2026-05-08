@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
-import { listDemos, API_BASE } from "@/lib/api";
+import { listDemos, apiBase } from "@/lib/api";
 import { ArrowRight, Skull, ShieldCheck } from "lucide-react";
 
-// This page reads `/api/demos` server-side at request time. The demo set is
-// baked into the container image; in dev with API_BASE empty, fetch falls
-// back to the local API on :8787 only after the page loads — so we render
-// gracefully if the fetch fails (empty list).
+// This page reads `/api/demos` server-side at request time. `apiBase()`
+// resolves to the loopback API in RSC context (same in dev and prod),
+// so the fetch works without per-environment configuration.
 export const dynamic = "force-dynamic";
 
 async function fetchDemos() {
   try {
     return await listDemos();
-  } catch {
-    // Network error during dev / build — fail soft.
+  } catch (e) {
+    // Surface failures to the server log — masking them silently is what
+    // hid the prod demos breakage in v1.0.
+    console.error("[demos page] listDemos failed:", e);
     return [];
   }
 }
@@ -48,7 +49,7 @@ export default async function DemosPage() {
 
         {demos.length === 0 ? (
           <div className="grid h-64 place-items-center rounded-md border border-dashed border-zinc-200 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-            no demos found · check API at {API_BASE || "/api/demos"}
+            no demos found · check API at {apiBase() || "/api/demos"}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
