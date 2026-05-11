@@ -374,7 +374,13 @@ async function handleCreate(req: Request): Promise<Response> {
   // ANCHOR_PROVIDER_URL is the canonical Anchor knob and resolveRpcUrl()
   // reads it before any other source.
   const workerEnv: Record<string, string> = {};
-  if (byokKey) workerEnv.OPENROUTER_API_KEY = byokKey;
+  if (byokKey) {
+    workerEnv.OPENROUTER_API_KEY = byokKey;
+    // Force the worker to use hardcoded BYOK model ids instead of the
+    // server's preset slugs — presets are scoped to the server's
+    // OpenRouter account and won't resolve under the user's key.
+    workerEnv.SIMWARS_BYOK_MODE = "1";
+  }
   if (body.onChain) {
     // Default to the public devnet RPC if no BYOK key was supplied. Without
     // this, on-chain runs would fall back to localhost (DEFAULT_RPC) inside

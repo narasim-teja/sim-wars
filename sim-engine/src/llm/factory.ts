@@ -2,6 +2,7 @@ import type { LLMClient } from "./types";
 import { OpenRouterProvider } from "./providers/openrouter-provider";
 import { MockProvider } from "./providers/mock-provider";
 import { RoutingLLMClient } from "./routing-client";
+import { BYOK_MODELS, isByokMode } from "./byok-models";
 
 /**
  * Single OpenRouter-backed factory.
@@ -60,6 +61,23 @@ export function buildLLMClient(opts: BuildLLMOptions = {}): LLMClient {
   const providerKind = opts.provider ?? "openrouter";
   if (providerKind === "mock") return new MockProvider();
 
+  // BYOK mode: the user's OpenRouter key can't resolve our server-side
+  // preset slugs, so route through explicit model ids per tier instead.
+  // Reasoning tier is intentionally absent from the BYOK map — the server
+  // preset for it is unset by default too.
+  if (isByokMode()) {
+    const primary = new OpenRouterProvider({
+      model: opts.model ?? BYOK_MODELS.primary.model,
+      baseUrl: opts.baseUrl,
+      defaultTemperature: BYOK_MODELS.primary.defaultTemperature,
+    });
+    const boost = new OpenRouterProvider({
+      model: BYOK_MODELS.boost.model,
+      defaultTemperature: BYOK_MODELS.boost.defaultTemperature,
+    });
+    return new RoutingLLMClient(primary, { primary, boost, reasoning: null });
+  }
+
   const primary = new OpenRouterProvider({
     model: opts.model,
     baseUrl: opts.baseUrl,
@@ -79,6 +97,12 @@ export function buildLLMClient(opts: BuildLLMOptions = {}): LLMClient {
  */
 export function buildReportLLMClient(opts: BuildLLMOptions = {}): LLMClient {
   if (opts.provider === "mock") return new MockProvider();
+  if (isByokMode()) {
+    return new OpenRouterProvider({
+      model: BYOK_MODELS.report.model,
+      defaultTemperature: BYOK_MODELS.report.defaultTemperature,
+    });
+  }
   const reportPreset = process.env.OPENROUTER_REPORT_PRESET;
   if (!reportPreset) return buildLLMClient(opts);
   return new OpenRouterProvider({ preset: reportPreset });

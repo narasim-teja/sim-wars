@@ -71,6 +71,13 @@ export interface OpenRouterProviderOptions {
    * `explicit` only when the underlying model is in the cache_control set.
    */
   cacheMode?: CacheMode;
+  /**
+   * Provider-level default temperature applied when no `preset` is set and
+   * the per-call options don't pass one. Used in BYOK mode where the
+   * dashboard-managed preset temperature is unavailable, so each tier needs
+   * its own baseline (e.g. 0.5 primary / 0.6 boost / 0.3 report).
+   */
+  defaultTemperature?: number;
 }
 
 /**
@@ -87,6 +94,7 @@ export class OpenRouterProvider implements LLMClient {
   private title?: string;
   private preset?: string;
   private cacheMode: CacheMode;
+  private defaultTemperature?: number;
   private accumulatedUsage: LLMUsage = { ...ZERO_USAGE };
 
   constructor(opts: OpenRouterProviderOptions = {}) {
@@ -103,6 +111,7 @@ export class OpenRouterProvider implements LLMClient {
     this.referer = opts.referer ?? process.env.OPENROUTER_REFERER;
     this.title = opts.title ?? process.env.OPENROUTER_TITLE ?? "sim-wars";
     this.cacheMode = opts.cacheMode ?? parseCacheMode(process.env.SIM_LLM_CACHE_MODE) ?? "flat";
+    this.defaultTemperature = opts.defaultTemperature;
     this.name = this.preset
       ? `openrouter:@preset/${this.preset}`
       : `openrouter:${this.model}`;
@@ -144,7 +153,10 @@ export class OpenRouterProvider implements LLMClient {
     };
     if (!this.preset) {
       // Preset owns temperature; setting it here would override the dashboard.
-      body.temperature = opts.temperature ?? 0.3;
+      // Without a preset, prefer an explicit per-call temperature, then the
+      // provider-level default (used by BYOK tiers), and only fall back to
+      // 0.3 when neither is set.
+      body.temperature = opts.temperature ?? this.defaultTemperature ?? 0.3;
     }
     if (opts.jsonMode !== false) {
       body.response_format = { type: "json_object" };
