@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
+import { SiteFooter } from "@/components/SiteFooter";
 import { listDemos, apiBase } from "@/lib/api";
 import { ArrowRight, Skull, ShieldCheck } from "lucide-react";
 
@@ -104,14 +105,7 @@ export default async function DemosPage() {
           </div>
         )}
       </main>
-      <footer className="border-t border-zinc-200 px-6 py-6">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-          <span>SIMWARS · MIT license · 2026</span>
-          <Link href="/about" className="hover:text-zinc-900">
-            about · trust
-          </Link>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

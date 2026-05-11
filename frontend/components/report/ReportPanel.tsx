@@ -342,7 +342,7 @@ export function ReportPanel({
       )}
 
       <footer className="border-t border-zinc-200 pt-4 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-        sim-wars · adversarial tokenomics simulator · MIT
+        simwars · adversarial tokenomics simulator
       </footer>
     </article>
   );

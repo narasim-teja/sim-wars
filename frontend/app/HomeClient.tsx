@@ -26,7 +26,7 @@ import {
   previewRoster,
   rosterPresetFromProtocolKind,
 } from "@/lib/roster";
-import { AGENT_COLORS, AGENT_LABELS, agentTypeFromId } from "@/lib/agent-colors";
+import { AGENT_COLORS } from "@/lib/agent-colors";
 import type { ExtractionOutcome, SimulationConfigParsed } from "@/lib/extraction/types";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
@@ -360,16 +360,6 @@ export default function HomeClient() {
     setByokHeliusError(null);
   }
 
-  // Agent-type breakdown for the UI: from the static roster when we'd send it,
-  // otherwise synthesized from the preview.
-  const agentTypes = new Map<string, number>();
-  if (activeAgents) {
-    for (const a of activeAgents) {
-      const t = agentTypeFromId(a.id);
-      agentTypes.set(t, (agentTypes.get(t) ?? 0) + 1);
-    }
-  }
-
   return (
     <>
       {/* TOKENOMICS SOURCE */}
@@ -556,51 +546,7 @@ export default function HomeClient() {
               capReason={onChain ? "On-chain mode is capped at " + MAX_ONCHAIN_AGENTS + " agents (deployer SOL + devnet RPC). Self-host to lift this." : null}
             />
 
-            {sendStaticRoster && activeAgents ? (
-              // Static roster path: show the hand-written personas verbatim.
-              // Grid wraps horizontally so a 20-agent preset doesn't read as
-              // a long vertical scroll; cards still show id + label per row.
-              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                {activeAgents.slice(0, 100).map((a) => {
-                  const t = agentTypeFromId(a.id);
-                  return (
-                    <div
-                      key={a.id}
-                      className="flex items-center gap-2 rounded border border-zinc-100 bg-white px-2.5 py-1.5"
-                    >
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: AGENT_COLORS[t] }}
-                      />
-                      <span className="truncate font-mono text-[11.5px] font-semibold text-zinc-900">{a.id}</span>
-                      <span className="ml-auto truncate font-mono text-[10px] text-zinc-500">{AGENT_LABELS[t]}</span>
-                    </div>
-                  );
-                })}
-                {activeAgents.length > 100 && (
-                  <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-1.5 font-mono text-[11px] text-zinc-500 sm:col-span-2 lg:col-span-3">
-                    + {activeAgents.length - 100} more personas hidden
-                  </div>
-                )}
-              </div>
-            ) : (
-              // Expander path: show the synthesized preview.
-              <RosterPreviewBlock preview={rosterPreview} />
-            )}
-
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-zinc-200 pt-3">
-              {sendStaticRoster && activeAgents
-                ? [...agentTypes.entries()].map(([type, n]) => (
-                    <div key={type} className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-600">
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ background: AGENT_COLORS[type as keyof typeof AGENT_COLORS] }}
-                      />
-                      {n}× {AGENT_LABELS[type as keyof typeof AGENT_LABELS]}
-                    </div>
-                  ))
-                : null}
-            </div>
+            <RosterPreviewBlock preview={rosterPreview} />
           </div>
 
           {/* Tick params + launch */}
@@ -816,11 +762,9 @@ function ChainToggle({
           ON-CHAIN MODE
         </span>
         <span
-          role="switch"
-          aria-checked={checked}
-          onClick={() => onChange(!checked)}
+          aria-hidden="true"
           className={cn(
-            "relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition-colors",
+            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
             checked ? "bg-emerald-600" : "bg-zinc-300",
           )}
         >
@@ -834,6 +778,7 @@ function ChainToggle({
       </div>
       <input
         type="checkbox"
+        role="switch"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only"

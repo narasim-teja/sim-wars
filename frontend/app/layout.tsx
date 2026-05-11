@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sim Wars · Adversarial tokenomics simulation",
-  description: "Upload your tokenomics. 20 LLM-powered adversaries stress-test it on Solana devnet.",
+  title: "SimWars · Adversarial tokenomics simulation",
+  description:
+    "Upload your tokenomics. Up to 5,000 LLM-powered adversaries trade, vote, and attack your design until it holds or speedruns a death spiral.",
   icons: {
     icon: "/logo-spiral.svg",
     shortcut: "/logo-spiral.svg",

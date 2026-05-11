@@ -1,6 +1,7 @@
 import { TopNav } from "@/components/TopNav";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { ReplayCards } from "@/components/ReplayCards";
+import { SiteFooter } from "@/components/SiteFooter";
 import { listDemos, type DemoCard } from "@/lib/api";
 import { MAX_AGENTS } from "@/lib/roster";
 import { ArrowDown } from "lucide-react";
@@ -31,7 +32,7 @@ export default async function Home() {
       <Hero />
       <ReplayCards demos={demos} />
       <HomeClient />
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }
@@ -50,12 +51,13 @@ function Hero() {
             <span className="text-zinc-400">Stress-test the future.</span>
           </h1>
           <p className="max-w-xl text-[15px] leading-7 text-zinc-600">
-            Drop a whitepaper or a pre-built scenario. Sim Wars spawns up to{" "}
+            Drop a whitepaper or pick a preset. SimWars spawns up to{" "}
             <em className="font-semibold not-italic text-zinc-900">
               {MAX_AGENTS.toLocaleString()} LLM-powered adversaries
-            </em>
-            : whales, governance attackers, MEV bots, sybil swarms. They attack your design
-            until it survives, or speedruns a death spiral.
+            </em>{" "}
+            (whales, governance attackers, MEV bots, sybil rings, panic sellers, treasuries, and more)
+            that trade, vote, and attack your design every tick. Either it holds, or you watch
+            it speedrun a death spiral before launch.
           </p>
           <p className="font-mono text-[12px] uppercase tracking-[0.18em] text-zinc-700">
             <span className="border-b border-zinc-300 pb-0.5">
@@ -75,13 +77,3 @@ function Hero() {
   );
 }
 
-function Footer() {
-  return (
-    <footer className="border-t border-zinc-200 px-6 py-6">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-        <span>SIMWARS · MIT license · 2026</span>
-        <span>Solana devnet · Bun · Anchor 1.0</span>
-      </div>
-    </footer>
-  );
-}
