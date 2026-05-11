@@ -7,7 +7,6 @@ import { ConfigEditor } from "@/components/upload/ConfigEditor";
 import { DeploymentPreview } from "@/components/upload/DeploymentPreview";
 import { ByokDialog } from "@/components/ByokDialog";
 import { previewDeploymentPlan } from "@/lib/deployment-plan";
-import { SCENARIO_PRESETS } from "@/lib/scenarios";
 import { createSim, type RosterPreset, type CreateSimBody } from "@/lib/api";
 import {
   getStoredCredential,
@@ -31,20 +30,8 @@ import type { ExtractionOutcome, SimulationConfigParsed } from "@/lib/extraction
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
 
-type ScenarioId = (typeof SCENARIO_PRESETS)[number]["id"];
-type Mode = "preset" | "custom";
-
-/** Map a preset scenario id to the backend roster preset. */
-const SCENARIO_TO_ROSTER: Record<ScenarioId, RosterPreset> = {
-  "luna-8": "luna",
-  "luna-20": "luna",
-  crv: "crv",
-};
-
 export default function HomeClient() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("preset");
-  const [selected, setSelected] = useState<ScenarioId>("luna-20");
   const [maxTicks, setMaxTicks] = useState(50);
   const [tickInterval, setTickInterval] = useState(0);
   const [onChain, setOnChain] = useState(false);
@@ -83,22 +70,17 @@ export default function HomeClient() {
   // Pending `launch()` resumption — set when launch() opens the dialog.
   const [pendingLaunch, setPendingLaunch] = useState(false);
 
-  const presetScenario = SCENARIO_PRESETS.find((s) => s.id === selected)!;
-
   /**
-   * Roster preset / agent count: derived from `mode + selected + protocolKind`
-   * during render. The user can override either by clicking the picker or
-   * sliding the count — those overrides are kept until any of the source
-   * dimensions changes, at which point we reset back to the auto-derived
-   * value. (React 19's `react-hooks/set-state-in-effect` rule disallows
+   * Roster preset / agent count are derived from the extracted whitepaper's
+   * protocol kind during render. The user can override either by clicking
+   * the picker or sliding the count — those overrides are kept until the
+   * source kind changes, at which point we reset to the auto-derived value.
+   * (React 19's `react-hooks/set-state-in-effect` rule disallows
    * synchronizing derived state via useEffect, so we compute it here.)
    */
-  const autoPreset: RosterPreset =
-    mode === "custom" && customMeta?.protocolKind
-      ? rosterPresetFromProtocolKind(customMeta.protocolKind)
-      : SCENARIO_TO_ROSTER[selected];
-  const autoAgentCount =
-    mode === "preset" ? presetScenario.payload.agents.length : DEFAULT_AGENT_COUNT;
+  const autoPreset: RosterPreset = customMeta?.protocolKind
+    ? rosterPresetFromProtocolKind(customMeta.protocolKind)
+    : "balanced";
 
   const [presetOverride, setPresetOverride] = useState<RosterPreset | null>(null);
   const [agentCountOverride, setAgentCountOverride] = useState<number | null>(null);
@@ -107,7 +89,7 @@ export default function HomeClient() {
   // React-19 "calculate during render" pattern: a setState during render
   // triggered by a mismatched key is allowed (it bails out the render
   // immediately and re-runs with the new state).
-  const presetSourceKey = `${mode}:${selected}:${customMeta?.protocolKind ?? ""}`;
+  const presetSourceKey = customMeta?.protocolKind ?? "";
   const [lastSourceKey, setLastSourceKey] = useState(presetSourceKey);
   if (presetSourceKey !== lastSourceKey) {
     setLastSourceKey(presetSourceKey);
@@ -119,7 +101,7 @@ export default function HomeClient() {
   // On-chain mode caps agents at MAX_ONCHAIN_AGENTS — deployer SOL + devnet
   // RPC don't scale to MAX_AGENTS. Off-chain stays at the full ceiling.
   const effectiveMaxAgents = onChain ? MAX_ONCHAIN_AGENTS : MAX_AGENTS;
-  const rawAgentCount = agentCountOverride ?? autoAgentCount;
+  const rawAgentCount = agentCountOverride ?? DEFAULT_AGENT_COUNT;
   const agentCount = Math.min(rawAgentCount, effectiveMaxAgents);
 
   /**
@@ -130,17 +112,7 @@ export default function HomeClient() {
    */
   const rosterPreview = previewRoster(agentCount, rosterPreset);
 
-  /**
-   * If the user picked a preset AND left the slider at the preset's native
-   * size, send the static `agents[]` so the hand-written persona configs
-   * (specific names, prompts) are preserved. Any other size routes through
-   * the server-side expander.
-   */
-  const sendStaticRoster =
-    mode === "preset" && agentCount === presetScenario.payload.agents.length;
-  const activeAgents = sendStaticRoster ? presetScenario.payload.agents : null;
-
-  const customReady = mode === "custom" && customConfig !== null;
+  const customReady = customConfig !== null;
 
   /**
    * Union of fields the LLM grounded in the source AND fields the user
@@ -149,29 +121,28 @@ export default function HomeClient() {
    * user never expressed intent here, so don't deploy a program for it."
    */
   const groundedFields = useMemo<string[]>(() => {
-    if (mode !== "custom") return [];
     const set = new Set<string>(customExtractedFields);
     for (const f of customEditedFields) set.add(f);
     return Array.from(set);
-  }, [mode, customExtractedFields, customEditedFields]);
+  }, [customExtractedFields, customEditedFields]);
 
   /**
-   * Live deploy preflight — only meaningful when on-chain is on for a
-   * custom config. Computed client-side as a mirror of the backend logic so
-   * the preview updates the moment the user toggles a setting; the server
-   * re-runs the same logic at launch.
+   * Live deploy preflight — only meaningful when on-chain is on. Computed
+   * client-side as a mirror of the backend logic so the preview updates the
+   * moment the user toggles a setting; the server re-runs the same logic at
+   * launch.
    */
   const deployPreview = useMemo(() => {
-    if (mode !== "custom" || !customConfig) return null;
+    if (!customConfig) return null;
     return previewDeploymentPlan({
       config: customConfig,
       onChain,
       extractedFields: groundedFields,
     });
-  }, [mode, customConfig, onChain, groundedFields]);
+  }, [customConfig, onChain, groundedFields]);
 
   const validation = useMemo(() => {
-    if (mode === "preset" || !customConfig) return { ok: true as const, blockers: [] as string[], warnings: [] as string[] };
+    if (!customConfig) return { ok: true as const, blockers: [] as string[], warnings: [] as string[] };
     const blockers: string[] = [];
     const warnings: string[] = [];
     if (customConfig.token.totalSupply <= 0) blockers.push("token.totalSupply must be > 0");
@@ -182,7 +153,7 @@ export default function HomeClient() {
       warnings.push(`allocations sum to ${allocSum.toFixed(2)}%, not 100%. Engine will run anyway.`);
     }
     return { ok: blockers.length === 0, blockers, warnings };
-  }, [mode, customConfig]);
+  }, [customConfig]);
 
   // Edit handler for the config form: writes into customConfig and marks paths as edited.
   const onEditField = useCallback(
@@ -218,15 +189,13 @@ export default function HomeClient() {
 
   async function launch(keyOverride?: string) {
     setError(null);
-    if (mode === "custom") {
-      if (!customConfig) {
-        setError("extract a whitepaper first, or switch to a preset");
-        return;
-      }
-      if (!validation.ok) {
-        setError(validation.blockers.join(" · "));
-        return;
-      }
+    if (!customConfig) {
+      setError("upload a whitepaper and extract its tokenomics first");
+      return;
+    }
+    if (!validation.ok) {
+      setError(validation.blockers.join(" · "));
+      return;
     }
     if (agentCount < 1 || agentCount > effectiveMaxAgents) {
       setError(
@@ -248,60 +217,37 @@ export default function HomeClient() {
 
     setLaunching(true);
     try {
-      const config =
-        mode === "custom" && customConfig
-          ? {
-              ...customConfig,
-              metadata: {
-                ...(customConfig.metadata ?? {}),
-                ...(customMeta?.protocolName ? { protocolName: customMeta.protocolName } : {}),
-                ...(customMeta?.protocolKind ? { protocolKind: customMeta.protocolKind } : {}),
-              },
-            }
-          : presetScenario.payload.config;
-      const extractionMeta =
-        mode === "custom" && customMeta
-          ? {
-              extractionMeta: {
-                protocolName: customMeta.protocolName,
-                protocolKind: customMeta.protocolKind,
-              },
-            }
-          : {};
-      // Mode-aware deployment: send the union of grounded + edited paths so
-      // the backend skips programs the user didn't express intent for.
-      // Preset scenarios omit this field — they keep the legacy "deploy
-      // everything on-chain" behavior.
-      const fieldsBody =
-        mode === "custom" && groundedFields.length > 0
-          ? { extractedFields: groundedFields }
-          : {};
-      // Two payload shapes:
-      //   - sendStaticRoster: preserve the hand-written preset personas
-      //   - else: hand the count + preset to the backend expander
-      const baseBody: CreateSimBody = sendStaticRoster && activeAgents
+      const config = {
+        ...customConfig,
+        metadata: {
+          ...(customConfig.metadata ?? {}),
+          ...(customMeta?.protocolName ? { protocolName: customMeta.protocolName } : {}),
+          ...(customMeta?.protocolKind ? { protocolKind: customMeta.protocolKind } : {}),
+        },
+      };
+      const extractionMeta = customMeta
         ? {
-            config,
-            agents: activeAgents,
-            tickConfig: { intervalMs: tickInterval, maxTicks },
-            onChain,
-            ...extractionMeta,
-            ...fieldsBody,
+            extractionMeta: {
+              protocolName: customMeta.protocolName,
+              protocolKind: customMeta.protocolKind,
+            },
           }
-        : {
-            config,
-            agentCount,
-            rosterPreset,
-            tickConfig: { intervalMs: tickInterval, maxTicks },
-            onChain,
-            ...extractionMeta,
-            ...fieldsBody,
-          };
+        : {};
+      // Send the union of grounded + edited paths so the backend skips
+      // programs the user didn't express intent for.
+      const fieldsBody =
+        groundedFields.length > 0 ? { extractedFields: groundedFields } : {};
       // Attach BYOK credentials. Server forwards each via env to the worker
       // (and on-chain deploy) subprocess and does NOT write them to disk or
       // any log line. Helius is only meaningful for on-chain runs.
       const body: CreateSimBody = {
-        ...baseBody,
+        config,
+        agentCount,
+        rosterPreset,
+        tickConfig: { intervalMs: tickInterval, maxTicks },
+        onChain,
+        ...extractionMeta,
+        ...fieldsBody,
         ...(effectiveKey ? { byokOpenRouterKey: effectiveKey } : {}),
         ...(onChain && byokHelius ? { byokHeliusUrl: byokHelius } : {}),
       };
@@ -362,6 +308,31 @@ export default function HomeClient() {
 
   return (
     <>
+      {/* WORKFLOW SEQUENCE */}
+      <section className="border-t border-zinc-200 px-6 py-12">
+        <div className="mx-auto w-full max-w-7xl">
+          <div className="mb-6 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+            <span className="block h-2 w-2 rotate-45 border border-zinc-900" />
+            How it works
+          </div>
+
+          <ol className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              { n: "01", title: "Seed extraction", desc: "Tokenomics parameters parsed from your PDF, GitHub repo, or raw markdown via an OpenRouter preset." },
+              { n: "02", title: "Roster expansion", desc: "Server-side expander spawns 1–5,000 adversarial personas across 13 archetypes (whales, governance attackers, MEV bots, sybils, panic sellers, and more)." },
+              { n: "03", title: "Live simulation", desc: "Per-tick LLM decisions batched in parallel. Stake / propose / vote land on Solana with real tx signatures when on-chain is enabled." },
+              { n: "04", title: "Failure report", desc: "Resilience score, attack timeline, and parameter recommendations after the run." },
+            ].map((s) => (
+              <li key={s.n} className="flex flex-col gap-2 border-l-2 border-zinc-200 pl-4">
+                <span className="section-number text-[13px] uppercase tracking-[0.2em] text-zinc-500">{s.n}</span>
+                <span className="text-base font-semibold text-zinc-900">{s.title}</span>
+                <span className="text-[12px] leading-5 text-zinc-500">{s.desc}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
       {/* TOKENOMICS SOURCE */}
       <section className="border-t border-zinc-200 bg-white px-6 py-12">
         <div className="mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1fr_minmax(0,560px)]">
@@ -372,13 +343,13 @@ export default function HomeClient() {
             </div>
             <h2 className="text-4xl font-semibold tracking-tight text-zinc-900">Ready</h2>
             <p className="max-w-md text-[14px] leading-7 text-zinc-600">
-              Engine is idle. Pick a pre-built scenario or upload your own whitepaper. Sim Wars
-              extracts tokenomics and seeds a fresh adversarial run.
+              Engine is idle. Drop your whitepaper to seed a fresh adversarial run. For
+              ready-made scenarios, see the replay cards above.
             </p>
 
             <div className="grid grid-cols-2 gap-6 pt-2">
               <Stat header="OpenRouter-backed" sub="cheap preset for agents · quality preset for the report" />
-              <Stat header={`Up to ${MAX_AGENTS.toLocaleString()} agents`} sub="server-side roster expander · veToken / LUNA / balanced presets" />
+              <Stat header={`Up to ${MAX_AGENTS.toLocaleString()} agents`} sub="server-side roster expander · 13 adversarial archetypes" />
             </div>
           </div>
 
@@ -387,130 +358,54 @@ export default function HomeClient() {
               <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-700">
                 01 / Tokenomics source
               </span>
-              <ModeToggle mode={mode} onChange={setMode} />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                whitepaper
+              </span>
             </div>
 
-            {/* Both modes render into the same grid cell so the container's
-                height is always the max of the two — switching tabs no
-                longer bounces the page. Inactive mode keeps its DOM but is
-                hidden via `invisible` (preserves component state, no
-                interactivity). */}
-            <div className="grid">
-              <div
-                className={cn(
-                  "col-start-1 row-start-1 grid gap-3 sm:grid-cols-2",
-                  mode === "preset" ? "" : "pointer-events-none invisible",
-                )}
-                aria-hidden={mode !== "preset"}
-              >
-                {SCENARIO_PRESETS.map((s) => {
-                  const active = s.id === selected;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        setSelected(s.id);
-                        setMaxTicks(s.defaultMaxTicks);
-                      }}
-                      tabIndex={mode === "preset" ? 0 : -1}
-                      className={cn(
-                        "flex cursor-pointer flex-col gap-1.5 rounded-md border bg-white p-4 text-left transition-all",
-                        active
-                          ? "border-zinc-900 shadow-[0_0_0_3px_rgba(24,24,27,0.06)]"
-                          : "border-zinc-200 hover:border-zinc-400",
-                      )}
-                    >
-                      <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
-                        {s.id}
-                      </span>
-                      <span className="text-base font-semibold text-zinc-900">{s.label}</span>
-                      <span className="text-[12px] leading-5 text-zinc-500">{s.description}</span>
-                      <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-700">
-                        {s.payload.agents.length} agents · {s.defaultMaxTicks} default ticks
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+            <CustomSource onExtracted={onExtracted} onCleared={onCustomCleared} />
 
-              <div
-                className={cn(
-                  "col-start-1 row-start-1 flex flex-col gap-3",
-                  mode === "custom" ? "" : "pointer-events-none invisible",
-                )}
-                aria-hidden={mode !== "custom"}
-              >
-                <CustomSource onExtracted={onExtracted} onCleared={onCustomCleared} />
-
-                {customReady && customConfig && (
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={() => setEditorOpen((v) => !v)}
-                      tabIndex={mode === "custom" ? 0 : -1}
-                      className="flex cursor-pointer items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-left hover:border-zinc-400"
-                    >
-                      <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-700">
-                        {editorOpen ? (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        )}
-                        Edit parameters
-                      </span>
-                      <span className="font-mono text-[10px] tracking-[0.2em] text-zinc-500">
-                        {customExtractedFields.length} extracted ·{" "}
-                        {customEditedFields.size} edited
-                      </span>
-                    </button>
-
-                    {editorOpen && (
-                      <div id="custom-config-editor" className="rounded-md border border-zinc-200 bg-white p-4">
-                        <ConfigEditor
-                          config={customConfig}
-                          extractedFields={customExtractedFields}
-                          editedFields={customEditedFields}
-                          onChange={onEditField}
-                        />
-                      </div>
+            {customReady && customConfig && (
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setEditorOpen((v) => !v)}
+                  className="flex cursor-pointer items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-left hover:border-zinc-400"
+                >
+                  <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-700">
+                    {editorOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
                     )}
+                    Edit parameters
+                  </span>
+                  <span className="font-mono text-[10px] tracking-[0.2em] text-zinc-500">
+                    {customExtractedFields.length} extracted ·{" "}
+                    {customEditedFields.size} edited
+                  </span>
+                </button>
 
-                    {validation.warnings.length > 0 && (
-                      <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-mono text-[11px] text-amber-800">
-                        {validation.warnings.map((w, i) => (
-                          <div key={i}>⚠ {w}</div>
-                        ))}
-                      </div>
-                    )}
+                {editorOpen && (
+                  <div id="custom-config-editor" className="rounded-md border border-zinc-200 bg-white p-4">
+                    <ConfigEditor
+                      config={customConfig}
+                      extractedFields={customExtractedFields}
+                      editedFields={customEditedFields}
+                      onChange={onEditField}
+                    />
+                  </div>
+                )}
+
+                {validation.warnings.length > 0 && (
+                  <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-mono text-[11px] text-amber-800">
+                    {validation.warnings.map((w, i) => (
+                      <div key={i}>⚠ {w}</div>
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* WORKFLOW SEQUENCE */}
-      <section className="border-t border-zinc-200 px-6 py-12">
-        <div className="mx-auto w-full max-w-7xl">
-          <div className="mb-6 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-            <span className="block h-2 w-2 rotate-45 border border-zinc-900" />
-            Workflow sequence
-          </div>
-
-          <ol className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {[
-              { n: "01", title: "Seed extraction", desc: "Tokenomics parameters parsed from PDF, GitHub, or raw markdown via OpenRouter preset." },
-              { n: "02", title: "Roster expansion", desc: "Server-side expander spawns 1–5,000 adversarial personas from veToken / LUNA / balanced archetypes." },
-              { n: "03", title: "Live simulation", desc: "Per-tick LLM decisions batched in parallel. Stake / propose / vote land on Solana with real tx signatures." },
-              { n: "04", title: "Failure report", desc: "Resilience score, attack timeline, and parameter recommendations after the run." },
-            ].map((s) => (
-              <li key={s.n} className="flex flex-col gap-2 border-l-2 border-zinc-200 pl-4">
-                <span className="section-number text-[13px] uppercase tracking-[0.2em] text-zinc-500">{s.n}</span>
-                <span className="text-base font-semibold text-zinc-900">{s.title}</span>
-                <span className="text-[12px] leading-5 text-zinc-500">{s.desc}</span>
-              </li>
-            ))}
-          </ol>
         </div>
       </section>
 
@@ -535,7 +430,7 @@ export default function HomeClient() {
             <RosterPresetPicker
               value={rosterPreset}
               onChange={setPresetOverride}
-              autoFromKind={mode === "custom" ? customMeta?.protocolKind : undefined}
+              autoFromKind={customMeta?.protocolKind}
             />
 
             {/* Agent count slider */}
@@ -666,7 +561,7 @@ export default function HomeClient() {
 
             <button
               onClick={() => void launch()}
-              disabled={launching || (mode === "custom" && !customReady)}
+              disabled={launching || !customReady}
               className={cn(
                 "mt-2 flex h-12 cursor-pointer items-center justify-center gap-2 rounded bg-zinc-900 font-mono text-[12px] uppercase tracking-[0.25em] text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60",
               )}
@@ -685,7 +580,7 @@ export default function HomeClient() {
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
               POST <span className="text-zinc-700">/api/sim</span>
               {onChain && <span className="text-emerald-700"> · on-chain</span>}
-              {mode === "custom" && customMeta && (
+              {customMeta && (
                 <span className="text-zinc-500">
                   {" · "}config from <span className="text-zinc-700">{truncate(customMeta.source.label, 38)}</span>
                 </span>
@@ -711,31 +606,6 @@ export default function HomeClient() {
         initialKey={byokKey ?? undefined}
       />
     </>
-  );
-}
-
-function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
-  return (
-    <div className="flex items-center gap-1 rounded-sm border border-zinc-200 bg-zinc-50 p-0.5 font-mono text-[10px] uppercase tracking-[0.2em]">
-      <button
-        onClick={() => onChange("preset")}
-        className={cn(
-          "cursor-pointer rounded-sm px-2.5 py-1 transition-colors",
-          mode === "preset" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900",
-        )}
-      >
-        Preset
-      </button>
-      <button
-        onClick={() => onChange("custom")}
-        className={cn(
-          "cursor-pointer rounded-sm px-2.5 py-1 transition-colors",
-          mode === "custom" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900",
-        )}
-      >
-        Whitepaper
-      </button>
-    </div>
   );
 }
 
@@ -961,7 +831,7 @@ function estimateCost(agents: number): number {
   return decisionsPerRun * usdPerCall + reportCost;
 }
 
-const ROSTER_PRESETS_ORDERED: RosterPreset[] = ["balanced", "stress", "lockup_resilience", "luna", "crv"];
+const ROSTER_PRESETS_ORDERED: RosterPreset[] = ["balanced", "stress", "lockup_resilience"];
 
 function RosterPresetPicker({
   value, onChange, autoFromKind,
@@ -982,7 +852,7 @@ function RosterPresetPicker({
           </span>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
         {ROSTER_PRESETS_ORDERED.map((p) => {
           const active = value === p;
           const meta = ROSTER_PRESET_LABELS[p];

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 type State =
   | { kind: "idle" }
+  | { kind: "staged-file"; file: File }
   | { kind: "extracting"; sourceLabel: string }
   | { kind: "ready"; outcome: ExtractionOutcome }
   | { kind: "error"; message: string };
@@ -44,14 +45,12 @@ export function CustomSource({ onExtracted, onCleared }: CustomSourceProps) {
     [onExtracted],
   );
 
-  const onDrop = useCallback(
-    (accepted: File[]) => {
-      const file = accepted[0];
-      if (!file) return;
-      void startExtraction(file.name, (signal) => extractFromFile(file, signal));
-    },
-    [startExtraction],
-  );
+  const onDrop = useCallback((accepted: File[]) => {
+    const file = accepted[0];
+    if (!file) return;
+    // Stage the file; the user clicks "Extract" to fire the API call.
+    setState({ kind: "staged-file", file });
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -60,6 +59,12 @@ export function CustomSource({ onExtracted, onCleared }: CustomSourceProps) {
     maxSize: 15 * 1024 * 1024,
     disabled: state.kind === "extracting",
   });
+
+  const extractStagedFile = useCallback(() => {
+    if (state.kind !== "staged-file") return;
+    const file = state.file;
+    void startExtraction(file.name, (signal) => extractFromFile(file, signal));
+  }, [state, startExtraction]);
 
   const submitUrl = useCallback(() => {
     const url = urlInput.trim();
@@ -99,6 +104,43 @@ export function CustomSource({ onExtracted, onCleared }: CustomSourceProps) {
   if (state.kind === "ready") {
     return (
       <ReadyCard outcome={state.outcome} onReset={reset} />
+    );
+  }
+
+  if (state.kind === "staged-file") {
+    return (
+      <div className="flex flex-col gap-3 rounded-md border border-zinc-300 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-600">
+              <FileText className="h-3.5 w-3.5" />
+              ready to extract
+            </div>
+            <div className="truncate text-[14px] font-semibold text-zinc-900">
+              {state.file.name}
+            </div>
+            <div className="font-mono text-[11px] text-zinc-500">
+              {(state.file.size / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB
+            </div>
+          </div>
+          <button
+            onClick={reset}
+            aria-label="Remove file"
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <p className="text-[12px] leading-5 text-zinc-500">
+          Extraction calls OpenRouter to parse the whitepaper. Usually 5–20 seconds.
+        </p>
+        <button
+          onClick={extractStagedFile}
+          className="h-10 cursor-pointer rounded bg-zinc-900 font-mono text-[11px] uppercase tracking-[0.22em] text-white hover:bg-zinc-800"
+        >
+          Extract tokenomics
+        </button>
+      </div>
     );
   }
 

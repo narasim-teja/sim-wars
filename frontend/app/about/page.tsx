@@ -1,10 +1,7 @@
-import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { ShieldCheck, KeyRound, ArrowUpRight, Database, Cpu } from "lucide-react";
+import { ShieldCheck, KeyRound, Cpu } from "lucide-react";
 
-const GIT_SHA = process.env.NEXT_PUBLIC_GIT_SHA?.slice(0, 7) ?? "dev";
-const IMAGE_DIGEST = process.env.NEXT_PUBLIC_IMAGE_DIGEST?.slice(0, 16) ?? null;
 const REPO_URL = "https://github.com/narasim-teja/sim-wars";
 
 export default function AboutPage() {
@@ -59,32 +56,16 @@ export default function AboutPage() {
             <li>It&apos;s scoped to one worker process and dies with it when the run ends.</li>
             <li>The site is served over HTTPS in production.</li>
             <li>
-              All of this is open source. If you want to verify any of it, the build running here is
-              commit{" "}
+              The code is open source. If you want to verify any of this, it&apos;s all at{" "}
               <a
                 className="underline-offset-2 hover:underline"
-                href={`${REPO_URL}/commit/${GIT_SHA}`}
+                href={REPO_URL}
               >
-                {GIT_SHA}
+                github.com/narasim-teja/sim-wars
               </a>
               .
             </li>
           </ul>
-        </Section>
-
-        <Section icon={<Database className="h-4 w-4" />} title="Provenance">
-          <Stat label="git sha" value={GIT_SHA} />
-          {IMAGE_DIGEST && <Stat label="image digest" value={IMAGE_DIGEST} />}
-          <Stat label="region" value="us-east-1 (AWS)" />
-          <p className="pt-2">
-            <Link
-              href={REPO_URL}
-              className="inline-flex items-center gap-1.5 text-zinc-700 underline-offset-2 hover:text-zinc-900 hover:underline"
-            >
-              <ArrowUpRight className="h-3.5 w-3.5" />
-              {REPO_URL.replace("https://", "")}
-            </Link>
-          </p>
         </Section>
       </main>
       <SiteFooter />
@@ -111,16 +92,5 @@ function Section({
         {children}
       </div>
     </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between border-b border-zinc-100 py-1.5 last:border-b-0">
-      <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-        {label}
-      </span>
-      <span className="font-mono text-[12px] tabular-nums text-zinc-900">{value}</span>
-    </div>
   );
 }
