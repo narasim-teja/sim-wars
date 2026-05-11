@@ -282,30 +282,35 @@ function RosterList({
     );
   }
   const sorted = [...agents].sort((a, b) => b.balance - a.balance);
+  // Container query (`@container` + `@lg:`) keeps the card width-aware:
+  // single column in Split view (~360px), two columns once the panel is
+  // wide enough to fit `id + label + balance` per cell (~32rem).
   return (
-    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-      {sorted.map((a) => {
-        const t = agentTypeFromId(a.id);
-        return (
-          <button
-            key={a.id}
-            onClick={() => onSelect(a.id)}
-            className="flex cursor-pointer items-center gap-2 rounded border border-zinc-100 bg-white px-3 py-1.5 text-left hover:border-zinc-300 hover:bg-zinc-50"
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ background: AGENT_COLORS[t] }}
-            />
-            <span className="font-mono text-[12px] font-semibold text-zinc-900">{a.id}</span>
-            <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              {AGENT_LABELS[t]}
-            </span>
-            <span className="ml-2 font-mono text-[11px] tabular-nums text-zinc-700">
-              {a.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </span>
-          </button>
-        );
-      })}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-1.5 @lg:grid-cols-2">
+        {sorted.map((a) => {
+          const t = agentTypeFromId(a.id);
+          return (
+            <button
+              key={a.id}
+              onClick={() => onSelect(a.id)}
+              className="flex min-w-0 cursor-pointer items-center gap-2 rounded border border-zinc-100 bg-white px-3 py-1.5 text-left hover:border-zinc-300 hover:bg-zinc-50"
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: AGENT_COLORS[t] }}
+              />
+              <span className="shrink-0 font-mono text-[12px] font-semibold text-zinc-900">{a.id}</span>
+              <span className="ml-auto min-w-0 truncate font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                {AGENT_LABELS[t]}
+              </span>
+              <span className="ml-2 shrink-0 font-mono text-[11px] tabular-nums text-zinc-700">
+                {a.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
