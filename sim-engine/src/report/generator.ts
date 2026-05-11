@@ -738,7 +738,7 @@ ${Object.entries(fieldSources.sectionExtracted)
 Treat any DEFAULT section as fabricated context; failure-mode descriptions and recommendations must focus on extracted sections only.\n`
     : "";
   return `You are an adversarial DeFi auditor. A live, multi-agent tokenomics simulation just finished and you must write the post-mortem report.
-${identity ? `\nPROTOCOL UNDER TEST: ${identity}\n(Use the token symbol when referring to price moves; use the protocol name in the exec summary.)\n` : ""}${sourceMap}
+${identity ? `\nPROTOCOL UNDER TEST: ${identity}\n(Use the token symbol when referring to price moves; use the protocol name in the exec summary.)\n` : `\nPROTOCOL UNDER TEST: (no name or symbol provided)\nDo NOT invent a placeholder name. Refer to it as "the protocol" or "the simulated token" — never use words like "TOKEN" as a stand-in.\n`}${sourceMap}
 CONFIG (the parameters under test):
   totalSupply: ${config.token.totalSupply}
   initialPrice: $${config.amm.initialPrice}

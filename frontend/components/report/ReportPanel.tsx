@@ -18,6 +18,24 @@ function isMeaningfulSymbol(sym?: string): sym is string {
   return !/^(token|usdc)$/i.test(trimmed);
 }
 
+/**
+ * Format an elapsed duration (ms) as a short human label: "just now",
+ * "5 min ago", "3 hours ago", "2 days ago". Returns null past a week — at
+ * that point the absolute date carries enough info on its own.
+ */
+function formatRelativeTime(elapsedMs: number): string | null {
+  if (!Number.isFinite(elapsedMs)) return null;
+  const sec = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (sec < 45) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} day${day === 1 ? "" : "s"} ago`;
+  return null;
+}
+
 const GRADE_COLOR: Record<ResilienceGrade, { bg: string; ring: string; fg: string }> = {
   S: { bg: "bg-emerald-50",  ring: "ring-emerald-200", fg: "text-emerald-700" },
   A: { bg: "bg-emerald-50",  ring: "ring-emerald-200", fg: "text-emerald-700" },
@@ -47,6 +65,19 @@ export function ReportPanel({
     return () => clearTimeout(t);
   }, [copied]);
 
+  // Track wall-clock time client-side so the relative-time label updates as
+  // the page sits open. Starts as `null` so the first paint is server-safe
+  // (we render only the absolute timestamp until hydration completes), then
+  // ticks once a minute.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const relativeTime =
+    nowMs == null ? null : formatRelativeTime(nowMs - report.meta.generatedAtMs);
+
   const onCopy = () => {
     if (!shareUrl) return;
     navigator.clipboard.writeText(shareUrl).then(() => setCopied(true)).catch(() => {});
@@ -58,7 +89,7 @@ export function ReportPanel({
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-5">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-            Sim-wars · post-mortem
+            SimWars · post-mortem
           </div>
           <h1 className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold tracking-tight text-zinc-900">
             <span>Resilience report</span>
@@ -87,7 +118,11 @@ export function ReportPanel({
             </span>
             <span className="text-zinc-300">·</span>
             <span>{new Date(report.meta.generatedAtMs).toLocaleString()}</span>
-            <LLMBadge model={report.meta.llmModel} />
+            {relativeTime && (
+              <span className="text-zinc-400" suppressHydrationWarning>
+                ({relativeTime})
+              </span>
+            )}
           </div>
         </div>
 
@@ -152,7 +187,7 @@ export function ReportPanel({
             sub={`${report.chainActivity.totalOnChain} / ${report.chainActivity.totalSuccessful} actions`}
           />
         ) : (
-          <Stat label="On-chain" value="off" sub="in-memory AMM only" />
+          <Stat label="On-chain" value="off" />
         )}
       </div>
 
@@ -687,34 +722,6 @@ function truncateMid(s: string, max: number): string {
   if (s.length <= max) return s;
   const half = Math.floor((max - 1) / 2);
   return `${s.slice(0, half)}…${s.slice(-half)}`;
-}
-
-/**
- * LLM provenance badge. Green when on a hosted preset (proves the report
- * actually ran through OpenRouter); amber when on a local model (used to
- * indicate a misconfigured run that fell back to Ollama — that path is
- * removed but old reports may still surface it).
- */
-function LLMBadge({ model }: { model: string }) {
-  const isOpenRouter = model.startsWith("openrouter:");
-  const isLocal = model.startsWith("ollama:") || model === "mock";
-  const palette = isOpenRouter
-    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : isLocal
-      ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-zinc-50 text-zinc-700 border-zinc-200";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em]",
-        palette,
-      )}
-      title={isLocal ? "Heads up: ran on a local fallback model — check OPENROUTER_API_KEY." : undefined}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", isOpenRouter ? "bg-emerald-600" : isLocal ? "bg-amber-600" : "bg-zinc-400")} />
-      {model.length > 50 ? model.slice(0, 50) + "…" : model}
-    </span>
-  );
 }
 
 function SeverityPill({ value }: { value: number }) {

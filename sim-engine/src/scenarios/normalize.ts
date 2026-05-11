@@ -79,7 +79,7 @@ export function normalizeConfig(raw: DeepPartial<SimulationConfig> | unknown): S
   const out: SimulationConfig = {
     metadata: {
       protocolName: str(metaIn.protocolName, ""),
-      tokenSymbol: str(metaIn.tokenSymbol, "TOKEN").toUpperCase().slice(0, 16),
+      tokenSymbol: str(metaIn.tokenSymbol, "").toUpperCase().slice(0, 16),
       quoteSymbol: str(metaIn.quoteSymbol, "USDC").toUpperCase().slice(0, 16),
       protocolKind: str(metaIn.protocolKind, ""),
     },
