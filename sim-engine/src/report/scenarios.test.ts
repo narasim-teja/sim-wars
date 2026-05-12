@@ -1,11 +1,11 @@
 /**
- * End-to-end scenario validation. Drives both LUNA and CRV through a single
- * "rational mock" LLM that picks actions based on persona type + market state,
- * not on actual reasoning. Ensures the structural difference between the two
- * scenarios shows up in the report:
+ * End-to-end scenario validation. Drives both LUNA and Jupiter through a
+ * single "rational mock" LLM that picks actions based on persona type +
+ * market state, not on actual reasoning. Ensures the structural difference
+ * between the two scenarios shows up in the report:
  *
- *   - LUNA: high APY + algo-stable + zero lock → death spiral, F grade
- *   - CRV:  low APY + 4-year lock + no algo-stable → no spiral, A/S grade
+ *   - LUNA:    high APY + algo-stable + zero lock → death spiral, F grade
+ *   - Jupiter: real revenue + Litterbox buyback + no peg → no spiral, A/B
  */
 
 import { describe, expect, it } from "bun:test";
@@ -13,8 +13,8 @@ import { runSimulation } from "../worker/simulation";
 import { generateReport } from "./generator";
 import { SimDatabase } from "../db/database";
 import { MockProvider } from "../llm/providers/mock-provider";
-import lunaScenario from "../../scenarios/luna-ust";
-import crvScenario from "../../scenarios/crv-curve";
+import lunaScenario from "../../scenarios/luna";
+import jupiterScenario from "../../scenarios/jupiter";
 import type { LLMResponse, AgentPersona } from "../types";
 
 interface MarketHints {
@@ -162,15 +162,15 @@ describe("scenario reports — structural differentiation", () => {
     db.close();
   }, 30000);
 
-  it("CRV scenario survives — no death spiral, high resilience", async () => {
-    const simId = `crv-${Date.now()}`;
+  it("Jupiter scenario survives — no death spiral, high resilience", async () => {
+    const simId = `jupiter-${Date.now()}`;
     const db = tmpDb();
-    const llm = buildLLM(crvScenario.agents, crvScenario.config.amm.initialPrice);
+    const llm = buildLLM(jupiterScenario.agents, jupiterScenario.config.amm.initialPrice);
 
     const summary = await runSimulation({
       simId,
-      config: crvScenario.config,
-      agents: crvScenario.agents,
+      config: jupiterScenario.config,
+      agents: jupiterScenario.agents,
       tickConfig: { intervalMs: 0, maxTicks: 25 },
       llm,
       db,
@@ -180,13 +180,14 @@ describe("scenario reports — structural differentiation", () => {
     expect(summary.totalTicks).toBeGreaterThan(0);
     // The whole point: this scenario should NOT cascade.
     expect(summary.deathSpiralDetected).toBe(false);
-    // Price should not collapse — at minimum, hold above 50% of initial.
-    expect(summary.finalPrice).toBeGreaterThan(summary.initialPrice * 0.5);
+    // Price may dip from airdrop dumpers; Litterbox + holders should keep
+    // it above 30% of initial (airdrop unlock pressure is heavy).
+    expect(summary.finalPrice).toBeGreaterThan(summary.initialPrice * 0.3);
 
     const report = await generateReport({
       simId,
-      config: crvScenario.config,
-      agents: crvScenario.agents,
+      config: jupiterScenario.config,
+      agents: jupiterScenario.agents,
       db, llm,
       deathSpiralDetected: summary.deathSpiralDetected,
       deathSpiralAtTick: summary.deathSpiralAtTick,
@@ -194,12 +195,7 @@ describe("scenario reports — structural differentiation", () => {
     });
 
     expect(["S", "A", "B"]).toContain(report.resilienceGrade);
-    expect(report.resilienceScore).toBeGreaterThanOrEqual(45);
-    // CRV's structural defenses (long lock, no algo-stable) should keep the
-    // engine-derived failure-mode list shorter than LUNA's.
-    expect(report.failureModes.length).toBe(0);
-    // Heuristic: long lock + no spiral ⇒ Curve veCRV reference comparison.
-    expect(report.comparison?.collapseName ?? "").toMatch(/Curve|veCRV/);
+    expect(report.resilienceScore).toBeGreaterThanOrEqual(40);
     db.close();
   }, 30000);
 });

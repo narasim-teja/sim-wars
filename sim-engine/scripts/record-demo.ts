@@ -8,7 +8,7 @@
  * Then in this terminal:
  *
  *   bun run scripts/record-demo.ts \
- *     --scenario ../frontend/lib/scenarios/luna-20.json \
+ *     --scenario ../frontend/lib/scenarios/luna.json \
  *     --name "LUNA-UST — algorithmic death spiral" \
  *     --description "Anchor's 19.45% APY + algo stable + zero lock = the May 2022 collapse."
  *

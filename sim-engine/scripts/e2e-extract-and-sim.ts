@@ -2,7 +2,7 @@
  * End-to-end driver: PDF → extract → POST /api/sim → tail events → fetch report.
  *
  * Used to confirm the full autonomy pipeline works on a real whitepaper:
- *   bun run scripts/e2e-extract-and-sim.ts --pdf curve.pdf --agents 50 --preset crv [--on-chain]
+ *   bun run scripts/e2e-extract-and-sim.ts --pdf marinade.pdf --agents 50 --preset marinade [--on-chain]
  *
  * Prerequisites (you provide these):
  *   - frontend dev server running on :3000 (for the /api/extract/source route)
@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 interface Args {
   pdfPath: string;
   agentCount: number;
-  rosterPreset: "luna" | "crv" | "balanced";
+  rosterPreset: "luna" | "marinade" | "jito" | "balanced";
   onChain: boolean;
   ticks: number;
   pollTimeoutMs: number;
@@ -54,7 +54,7 @@ function parseArgs(argv: string[]): Args {
     if (a === "--out" && argv[i + 1]) { outDir = argv[++i]!; continue; }
   }
   if (!pdfPath) {
-    console.error("usage: bun run scripts/e2e-extract-and-sim.ts --pdf <path> [--agents N] [--preset luna|crv|balanced] [--on-chain] [--ticks N] [--poll-timeout-ms N]");
+    console.error("usage: bun run scripts/e2e-extract-and-sim.ts --pdf <path> [--agents N] [--preset luna|marinade|jito|balanced] [--on-chain] [--ticks N] [--poll-timeout-ms N]");
     process.exit(2);
   }
   return { pdfPath: resolve(pdfPath), agentCount, rosterPreset, onChain, ticks, pollTimeoutMs, frontendBase, simBase, outDir };

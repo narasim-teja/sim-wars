@@ -24,11 +24,12 @@ describe("expandRoster", () => {
     expect(counts.WHALE).toBeGreaterThanOrEqual(3);
   });
 
-  test("crv preset produces holder-heavy mix and skips PANIC", () => {
-    const roster = expandRoster({ count: 30, simId: "test-seed", preset: "crv" });
+  test("jupiter preset produces holder + degen + treasury mix", () => {
+    const roster = expandRoster({ count: 30, simId: "test-seed", preset: "jupiter" });
     const counts = countByPrefix(roster);
-    expect(counts.HOLDER ?? 0).toBeGreaterThanOrEqual(5);
-    expect(counts.PANIC ?? 0).toBe(0);
+    expect(counts.HOLDER ?? 0).toBeGreaterThanOrEqual(3);
+    expect(counts.DEGEN ?? 0).toBeGreaterThanOrEqual(3);
+    expect(counts.TREASURY ?? 0).toBeGreaterThanOrEqual(1);
   });
 
   test("custom default uses generic balanced prompts, not LUNA fixture prompts", () => {

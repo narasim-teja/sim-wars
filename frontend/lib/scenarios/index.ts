@@ -1,6 +1,5 @@
-import luna8 from "./luna-8.json";
-import luna20 from "./luna-20.json";
-import crv from "./crv-curve.json";
+import luna from "./luna.json";
+import jupiter from "./jupiter.json";
 
 export interface ScenarioPayload {
   config: unknown;
@@ -9,7 +8,7 @@ export interface ScenarioPayload {
 }
 
 export interface ScenarioPreset {
-  id: "luna-8" | "luna-20" | "crv";
+  id: "luna" | "jupiter";
   label: string;
   description: string;
   payload: ScenarioPayload;
@@ -20,27 +19,19 @@ export interface ScenarioPreset {
 
 export const SCENARIO_PRESETS: ScenarioPreset[] = [
   {
-    id: "luna-20",
-    label: "LUNA / UST · 20 agents",
-    description: "Full Phase-2 roster reproducing the May 2022 death spiral. Whales, governance attackers, sybil swarm, MEV bot, insiders, panic seller. The works.",
-    payload: luna20 as ScenarioPayload,
-    defaultMaxTicks: 50,
+    id: "luna",
+    label: "LUNA / UST · death spiral",
+    description: "Anchor's 19.45% APY + algorithmic stablecoin + zero lock = the May 2022 collapse. 100-agent cast: whales, governance attackers, sybil swarm, MEV bot, panic sellers — driving the burn-mint loop until UST → LUNA hyperinflation.",
+    payload: luna as ScenarioPayload,
+    defaultMaxTicks: 200,
     validated: true,
   },
   {
-    id: "luna-8",
-    label: "LUNA / UST · 8 agents",
-    description: "Slimmed roster: 2 whales, 2 farmers, 1 degen, 1 governance attacker, 2 long-term holders. Faster iteration, same dynamics.",
-    payload: luna8 as ScenarioPayload,
-    defaultMaxTicks: 30,
-    validated: true,
-  },
-  {
-    id: "crv",
-    label: "Curve veCRV · resilience backtest",
-    description: "veToken model with 4-year locks, sustainable APY, defender-friendly governance. Demonstrates why long lock-ups break the death-spiral loop.",
-    payload: crv as ScenarioPayload,
-    defaultMaxTicks: 30,
+    id: "jupiter",
+    label: "Jupiter JUP · Litterbox buyback",
+    description: "Solana DEX aggregator. 50% of onchain revenue → Litterbox Trust → programmatic JUP buyback (~134M burned). Jupuary airdrop dumpers create persistent supply overhang absorbed by Litterbox + ASR holders. Real revenue, no peg.",
+    payload: jupiter as ScenarioPayload,
+    defaultMaxTicks: 200,
     validated: true,
   },
 ];

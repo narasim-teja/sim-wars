@@ -12,7 +12,7 @@ async function main() {
   const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
   const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith("--")));
   const onChain = flags.has("--on-chain");
-  const scenarioPath = args[0] || "../scenarios/luna-ust.ts";
+  const scenarioPath = args[0] || "../scenarios/luna.ts";
   console.log(`Loading scenario: ${scenarioPath}`);
 
   let config: SimulationConfig;

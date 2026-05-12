@@ -20,10 +20,10 @@ import type { AgentPersona } from "../types";
 import { ROSTER_PERTURBATION } from "../constants";
 import {
   ALL_PHASE2_PERSONAS,
-  CRV_PERSONAS,
+  JUPITER_PERSONAS,
 } from "./personas";
 
-export type RosterPreset = "luna" | "crv" | "balanced" | "stress" | "lockup_resilience";
+export type RosterPreset = "luna" | "jupiter" | "balanced" | "stress" | "lockup_resilience";
 
 /**
  * Ratios are normalized — the expander rounds + redistributes to hit `count`
@@ -48,19 +48,19 @@ const RATIOS: Record<RosterPreset, Record<string, number>> = {
     INSIDER: 1,
     PANIC: 3,
   },
-  // Curve / veToken: heavy on holders + farmers (committed-lock behavior),
-  // a couple of whales, no panic seller (locks neutralize them).
-  crv: {
+  // Jupiter JUP: 50% of revenue → Litterbox programmatic buyback. Massive
+  // Jupuary airdrop dumpers (DEGEN-heavy) provide the persistent supply
+  // overhang that Litterbox + ASR farmers absorb over time. Market makers
+  // (WHALE_02 archetype) provide two-sided liquidity that dampens swings.
+  jupiter: {
     WHALE: 4,
     GOV: 2,
-    HOLDER: 8,
-    FARMER: 8,
-    ARB: 2,
+    HOLDER: 6,
+    FARMER: 6,
+    ARB: 3,
     TREASURY: 1,
-    DEGEN: 2,
-    LP: 1,
-    ANALYST: 1,
-    INSIDER: 1,
+    DEGEN: 6,
+    ANALYST: 2,
   },
   // Generic stress-test: even-ish across archetypes, no scenario bias.
   balanced: {
@@ -138,8 +138,8 @@ interface ExpandRosterArgs {
 
 /**
  * Build an N-agent roster from the chosen preset. Pulls archetypes from
- * `personas.ts` (LUNA pool by default; CRV preset uses CRV_PERSONAS for
- * parameters but cloning ratios live in this file).
+ * `personas.ts` (LUNA pool by default; marinade/jito presets use their own
+ * persona arrays; cloning ratios live in this file).
  */
 export function expandRoster(args: ExpandRosterArgs): AgentPersona[] {
   const { count, simId } = args;
@@ -148,8 +148,8 @@ export function expandRoster(args: ExpandRosterArgs): AgentPersona[] {
 
   const archetypePool = preset === "luna"
     ? ALL_PHASE2_PERSONAS
-    : preset === "crv"
-      ? CRV_PERSONAS
+    : preset === "jupiter"
+      ? JUPITER_PERSONAS
       : GENERIC_PERSONAS;
   const archetypesByPrefix = groupByPrefix(archetypePool);
   const ratios = RATIOS[preset];

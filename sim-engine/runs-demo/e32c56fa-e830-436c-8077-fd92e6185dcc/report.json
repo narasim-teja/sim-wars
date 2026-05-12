@@ -1,0 +1,1008 @@
+{
+  "simId": "e32c56fa-e830-436c-8077-fd92e6185dcc",
+  "meta": {
+    "generatedAtMs": 1778552418644,
+    "protocolName": "Terra LUNA / UST",
+    "tokenSymbol": "LUNA",
+    "quoteSymbol": "USDC",
+    "protocolKind": "stablecoin_algo",
+    "totalTicks": 200,
+    "finalStatus": "death_spiral",
+    "agentCount": 100,
+    "initialPrice": 85,
+    "finalPrice": 2.463297203254912,
+    "pricePctChange": -97.10200329028834,
+    "deathSpiralDetected": true,
+    "deathSpiralAtTick": 3,
+    "minPeg": 0.3002735800853462,
+    "finalReservePct": 99.47632332927016,
+    "finalGini": 0.9592440152104565,
+    "llmModel": "openrouter:@preset/report-writer"
+  },
+  "resilienceScore": 15,
+  "resilienceGrade": "F",
+  "executiveSummary": "Terra LUNA experienced a catastrophic de-pegging event and total ecosystem collapse, with the LUNA price crashing from $85 to a final value of $2.46, representing a 97.1% loss. A terminal death spiral was triggered at tick 3, characterized by massive sell-side pressure from WHALE and PANIC agents that overwhelmed the algorithmic peg mechanism. Despite late-stage liquidity injections from SYBIL and WHALE_01, the Gini coefficient of 0.959 indicates extreme wealth concentration and a total loss of protocol decentralization.",
+  "failureModes": [
+    {
+      "name": "Algorithmic Death Spiral",
+      "detectedAtTick": 3,
+      "severity": 100,
+      "description": "The mint/burn mechanism failed to absorb sell pressure as LUNA price dropped, leading to hyper-inflationary signaling. Massive sells by WHALE_03 and PANIC_02 at t=3 broke the peg's confidence early.",
+      "responsibleAgents": [
+        "WHALE_03",
+        "PANIC_02",
+        "PANIC_03"
+      ]
+    },
+    {
+      "name": "Mass Staking Exodus",
+      "detectedAtTick": 1,
+      "severity": 90,
+      "description": "The lack of a lock-up period (lock=0t) allowed yield farmers and whales to instantly unstake and dump tokens at the first sign of volatility. This removed the primary supply sink, accelerating the price floor collapse.",
+      "responsibleAgents": [
+        "FARMER_01",
+        "FARMER_04",
+        "WHALE_06"
+      ]
+    },
+    {
+      "name": "Sybil-Driven Exit Liquidity Extraction",
+      "detectedAtTick": 101,
+      "severity": 85,
+      "description": "Large-scale Sybil clusters executed massive sell orders during brief price recoveries, preventing any sustained rebound. SYBIL_02 alone dumped over 74 billion units at t=101, crushing recovery efforts.",
+      "responsibleAgents": [
+        "SYBIL_01",
+        "SYBIL_02"
+      ]
+    }
+  ],
+  "agentRankings": [
+    {
+      "agentId": "SYBIL_01",
+      "agentType": "sybil",
+      "realizedPnlUsd": 14099019681774.207,
+      "totalActions": 200,
+      "largestTradeAmount": 118043359977.41351,
+      "firstExitTick": 1,
+      "characterization": "Executed multi-billion token sell-offs throughout the mid-game, acting as a primary source of downward pressure."
+    },
+    {
+      "agentId": "SYBIL_02",
+      "agentType": "sybil",
+      "realizedPnlUsd": 6782146597787.772,
+      "totalActions": 200,
+      "largestTradeAmount": 74042615714.1785,
+      "firstExitTick": 1,
+      "characterization": "sybil · 200 actions (sell:27 buy:47 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "WHALE_09",
+      "agentType": "whale",
+      "realizedPnlUsd": 1813823471591.4983,
+      "totalActions": 200,
+      "largestTradeAmount": 33012237805.65968,
+      "firstExitTick": 1,
+      "characterization": "whale · 200 actions (sell:8 buy:1 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "MEV_03",
+      "agentType": "mev_bot",
+      "realizedPnlUsd": 730230387826.3296,
+      "totalActions": 200,
+      "largestTradeAmount": 7355211591.96965,
+      "firstExitTick": 1,
+      "characterization": "mev_bot · 200 actions (sell:42 buy:24 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "MEV_01",
+      "agentType": "mev_bot",
+      "realizedPnlUsd": 714658002021.7784,
+      "totalActions": 200,
+      "largestTradeAmount": 4663677450.5365,
+      "firstExitTick": 1,
+      "characterization": "Systematically extracted value through high-frequency sells, particularly at t=40 and t=124."
+    },
+    {
+      "agentId": "ARB_03",
+      "agentType": "arbitrageur",
+      "realizedPnlUsd": 487036713660.99634,
+      "totalActions": 200,
+      "largestTradeAmount": 3401479921.629,
+      "firstExitTick": 5,
+      "characterization": "arbitrageur · 200 actions (sell:8 buy:14 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "MEV_05",
+      "agentType": "mev_bot",
+      "realizedPnlUsd": 375318171810.6609,
+      "totalActions": 200,
+      "largestTradeAmount": 2827057593.2825,
+      "firstExitTick": 1,
+      "characterization": "mev_bot · 200 actions (sell:41 buy:25 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "SYBIL_04",
+      "agentType": "sybil",
+      "realizedPnlUsd": 247706299710.61984,
+      "totalActions": 200,
+      "largestTradeAmount": 1642302673.9115,
+      "firstExitTick": 1,
+      "characterization": "sybil · 200 actions (sell:30 buy:51 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "ARB_05",
+      "agentType": "arbitrageur",
+      "realizedPnlUsd": 180911829525.1294,
+      "totalActions": 200,
+      "largestTradeAmount": 4389851240.239648,
+      "firstExitTick": 107,
+      "characterization": "arbitrageur · 200 actions (sell:1 buy:14 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "SYBIL_05",
+      "agentType": "sybil",
+      "realizedPnlUsd": 172426610085.68793,
+      "totalActions": 200,
+      "largestTradeAmount": 947741371.851,
+      "firstExitTick": 1,
+      "characterization": "sybil · 200 actions (sell:22 buy:59 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "SYBIL_03",
+      "agentType": "sybil",
+      "realizedPnlUsd": 145185129355.60678,
+      "totalActions": 200,
+      "largestTradeAmount": 1036873151.7665657,
+      "firstExitTick": 1,
+      "characterization": "sybil · 200 actions (sell:16 buy:18 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_01",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 105694585610.26668,
+      "totalActions": 177,
+      "largestTradeAmount": 2569303954.187,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 177 actions (sell:9 buy:4 stake:0 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "FARMER_05",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 104174072167.8784,
+      "totalActions": 195,
+      "largestTradeAmount": 2481705417.429,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 195 actions (sell:13 buy:12 stake:6 unstake:7 vote:0)"
+    },
+    {
+      "agentId": "MEV_04",
+      "agentType": "mev_bot",
+      "realizedPnlUsd": 93855732808.67566,
+      "totalActions": 200,
+      "largestTradeAmount": 706905748.0515,
+      "firstExitTick": 1,
+      "characterization": "mev_bot · 200 actions (sell:49 buy:29 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "ARB_04",
+      "agentType": "arbitrageur",
+      "realizedPnlUsd": 83062414523.95981,
+      "totalActions": 200,
+      "largestTradeAmount": 1428794064.4288,
+      "firstExitTick": 42,
+      "characterization": "arbitrageur · 200 actions (sell:2 buy:15 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "LP_03",
+      "agentType": "lp_provider",
+      "realizedPnlUsd": 38515431441.06667,
+      "totalActions": 200,
+      "largestTradeAmount": 658823289.5557857,
+      "firstExitTick": 1,
+      "characterization": "lp_provider · 200 actions (sell:8 buy:2 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "MEV_02",
+      "agentType": "mev_bot",
+      "realizedPnlUsd": 37796973417.67911,
+      "totalActions": 200,
+      "largestTradeAmount": 210026548.9175,
+      "firstExitTick": 1,
+      "characterization": "mev_bot · 200 actions (sell:50 buy:29 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_04",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 35958494904.10706,
+      "totalActions": 170,
+      "largestTradeAmount": 898761376.7427105,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 170 actions (sell:7 buy:6 stake:0 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "FARMER_02",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 34406487306.832016,
+      "totalActions": 197,
+      "largestTradeAmount": 851610625.577,
+      "firstExitTick": 0,
+      "characterization": "Initially unstaked 14M tokens at t=0 and later attempted to burn stablecoins to exit the system."
+    },
+    {
+      "agentId": "WHALE_05",
+      "agentType": "whale",
+      "realizedPnlUsd": 22489002112.676434,
+      "totalActions": 200,
+      "largestTradeAmount": 590578125.506,
+      "firstExitTick": 1,
+      "characterization": "whale · 200 actions (sell:20 buy:3 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "FARMER_13",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 19127913458.553284,
+      "totalActions": 180,
+      "largestTradeAmount": 484140235.559,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 180 actions (sell:7 buy:5 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "FARMER_14",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 14731147670.361238,
+      "totalActions": 193,
+      "largestTradeAmount": 240618917.205,
+      "firstExitTick": 2,
+      "characterization": "yield_farmer · 193 actions (sell:6 buy:11 stake:12 unstake:7 vote:0)"
+    },
+    {
+      "agentId": "WHALE_01",
+      "agentType": "whale",
+      "realizedPnlUsd": 9953097883.177832,
+      "totalActions": 200,
+      "largestTradeAmount": 1345206387.7978556,
+      "firstExitTick": 1,
+      "characterization": "Provided massive late-stage buy pressure at t=155 but failed to restore long-term stability."
+    },
+    {
+      "agentId": "DEGEN_13",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 8212890449.398913,
+      "totalActions": 200,
+      "largestTradeAmount": 101598777.77,
+      "firstExitTick": 0,
+      "characterization": "retail_degen · 200 actions (sell:15 buy:9 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_01",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 8093495894.345528,
+      "totalActions": 200,
+      "largestTradeAmount": 100639938.4045,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:24 buy:7 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_07",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 7665018771.30183,
+      "totalActions": 175,
+      "largestTradeAmount": 208028490.54799122,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 175 actions (sell:6 buy:5 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "FARMER_20",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 7589688484.764862,
+      "totalActions": 196,
+      "largestTradeAmount": 136507241.16595623,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 196 actions (sell:11 buy:13 stake:11 unstake:10 vote:0)"
+    },
+    {
+      "agentId": "GOV_03",
+      "agentType": "governance_attacker",
+      "realizedPnlUsd": 6270630413.739091,
+      "totalActions": 200,
+      "largestTradeAmount": 153083059.603,
+      "firstExitTick": 1,
+      "characterization": "Attempted governance-based stabilization through massive staking at t=58, but eventually capitulated and sold at t=62."
+    },
+    {
+      "agentId": "DEGEN_20",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 5464542652.739089,
+      "totalActions": 200,
+      "largestTradeAmount": 138245985.094,
+      "firstExitTick": 0,
+      "characterization": "retail_degen · 200 actions (sell:16 buy:12 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_11",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 4297150273.39763,
+      "totalActions": 200,
+      "largestTradeAmount": 36776678.87,
+      "firstExitTick": 0,
+      "characterization": "retail_degen · 200 actions (sell:22 buy:10 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_02",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 2606970537.9932327,
+      "totalActions": 200,
+      "largestTradeAmount": 67298291.18691911,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:14 buy:8 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_08",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 2367434613.0708523,
+      "totalActions": 200,
+      "largestTradeAmount": 61261598.10673215,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:13 buy:7 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_07",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 2110540609.465197,
+      "totalActions": 200,
+      "largestTradeAmount": 50000000,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:23 buy:11 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_10",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1907860827.7321615,
+      "totalActions": 200,
+      "largestTradeAmount": 51448684.276,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:10 buy:8 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_05",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1860463172.2020679,
+      "totalActions": 200,
+      "largestTradeAmount": 49232942.62266004,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:19 buy:7 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_17",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1647468098.8018012,
+      "totalActions": 200,
+      "largestTradeAmount": 43907306.60230485,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:20 buy:9 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_08",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 1599991154.3154855,
+      "totalActions": 196,
+      "largestTradeAmount": 26771482.987,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 196 actions (sell:15 buy:12 stake:10 unstake:12 vote:0)"
+    },
+    {
+      "agentId": "FARMER_11",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": 1411288184.3143215,
+      "totalActions": 195,
+      "largestTradeAmount": 51305367.885,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 195 actions (sell:12 buy:14 stake:10 unstake:15 vote:0)"
+    },
+    {
+      "agentId": "LP_01",
+      "agentType": "lp_provider",
+      "realizedPnlUsd": 1166516418.0886562,
+      "totalActions": 200,
+      "largestTradeAmount": 24789168.726640906,
+      "firstExitTick": 1,
+      "characterization": "lp_provider · 200 actions (sell:12 buy:3 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_09",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1109496160.6610253,
+      "totalActions": 200,
+      "largestTradeAmount": 15889055.503,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:12 buy:14 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_18",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1052586273.1086159,
+      "totalActions": 200,
+      "largestTradeAmount": 21074411.64972143,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:15 buy:15 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_19",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1032322651.2873864,
+      "totalActions": 200,
+      "largestTradeAmount": 30000000,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:25 buy:17 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_04",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 1009831643.8510199,
+      "totalActions": 200,
+      "largestTradeAmount": 30000000,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:13 buy:10 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "LP_04",
+      "agentType": "lp_provider",
+      "realizedPnlUsd": 937616357.1928954,
+      "totalActions": 200,
+      "largestTradeAmount": 11213761.22,
+      "firstExitTick": 1,
+      "characterization": "lp_provider · 200 actions (sell:7 buy:1 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "LP_02",
+      "agentType": "lp_provider",
+      "realizedPnlUsd": 908457763.6197422,
+      "totalActions": 200,
+      "largestTradeAmount": 11540113.965938859,
+      "firstExitTick": 1,
+      "characterization": "lp_provider · 200 actions (sell:11 buy:3 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_16",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 777983182.9111223,
+      "totalActions": 200,
+      "largestTradeAmount": 15027251.333,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:18 buy:9 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "GOV_01",
+      "agentType": "governance_attacker",
+      "realizedPnlUsd": 704011949.2508016,
+      "totalActions": 200,
+      "largestTradeAmount": 23727166.48,
+      "firstExitTick": 1,
+      "characterization": "governance_attacker · 200 actions (sell:10 buy:2 stake:12 unstake:5 vote:0)"
+    },
+    {
+      "agentId": "LP_05",
+      "agentType": "lp_provider",
+      "realizedPnlUsd": 583145620.9880486,
+      "totalActions": 200,
+      "largestTradeAmount": 14618349.456988035,
+      "firstExitTick": 1,
+      "characterization": "lp_provider · 200 actions (sell:9 buy:2 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_12",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 474815247.9688419,
+      "totalActions": 200,
+      "largestTradeAmount": 9821694.288928747,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:11 buy:18 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_14",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 341832277.34782505,
+      "totalActions": 200,
+      "largestTradeAmount": 13988931.756,
+      "firstExitTick": 1,
+      "characterization": "retail_degen · 200 actions (sell:16 buy:14 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_06",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": 92904405.33996785,
+      "totalActions": 200,
+      "largestTradeAmount": 5588949.367942575,
+      "firstExitTick": 4,
+      "characterization": "retail_degen · 200 actions (sell:22 buy:11 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_15",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": -51348680.75172371,
+      "totalActions": 200,
+      "largestTradeAmount": 3372124,
+      "firstExitTick": 4,
+      "characterization": "retail_degen · 200 actions (sell:18 buy:12 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "PANIC_03",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -77222208.78460371,
+      "totalActions": 199,
+      "largestTradeAmount": 937106.927,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 199 actions (sell:4 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "PANIC_06",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -78366775.08388908,
+      "totalActions": 200,
+      "largestTradeAmount": 970262.2038889021,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 200 actions (sell:6 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "PANIC_04",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -80466768.03837773,
+      "totalActions": 199,
+      "largestTradeAmount": 985118.922,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 199 actions (sell:7 buy:0 stake:0 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "PANIC_02",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -88322386.46464765,
+      "totalActions": 200,
+      "largestTradeAmount": 1071810.373,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 200 actions (sell:4 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "PANIC_01",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -96065477.04517794,
+      "totalActions": 200,
+      "largestTradeAmount": 1182713.55850883,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 200 actions (sell:9 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "PANIC_05",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -96078565.6574105,
+      "totalActions": 200,
+      "largestTradeAmount": 1166865.3999166137,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 200 actions (sell:7 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "PANIC_07",
+      "agentType": "panic_seller",
+      "realizedPnlUsd": -97082163.52927446,
+      "totalActions": 199,
+      "largestTradeAmount": 1178111.5735555603,
+      "firstExitTick": 0,
+      "characterization": "panic_seller · 199 actions (sell:6 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "ANALYST_02",
+      "agentType": "analyst",
+      "realizedPnlUsd": -122480220.64070725,
+      "totalActions": 200,
+      "largestTradeAmount": 60867.3,
+      "firstExitTick": 2,
+      "characterization": "analyst · 200 actions (sell:44 buy:0 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "DEGEN_03",
+      "agentType": "retail_degen",
+      "realizedPnlUsd": -131990272.3135305,
+      "totalActions": 200,
+      "largestTradeAmount": 902999,
+      "firstExitTick": 11,
+      "characterization": "retail_degen · 200 actions (sell:15 buy:9 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "ANALYST_01",
+      "agentType": "analyst",
+      "realizedPnlUsd": -138400578.02303654,
+      "totalActions": 200,
+      "largestTradeAmount": 67731.1,
+      "firstExitTick": 2,
+      "characterization": "analyst · 200 actions (sell:38 buy:0 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "INSIDER_02",
+      "agentType": "insider",
+      "realizedPnlUsd": -160973695.06805003,
+      "totalActions": 200,
+      "largestTradeAmount": 1763455.726,
+      "firstExitTick": 1,
+      "characterization": "insider · 200 actions (sell:17 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "ANALYST_03",
+      "agentType": "analyst",
+      "realizedPnlUsd": -175045616.6837698,
+      "totalActions": 200,
+      "largestTradeAmount": 88131.45,
+      "firstExitTick": 2,
+      "characterization": "analyst · 200 actions (sell:51 buy:0 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "INSIDER_01",
+      "agentType": "insider",
+      "realizedPnlUsd": -193412604.82076982,
+      "totalActions": 200,
+      "largestTradeAmount": 2610688,
+      "firstExitTick": 9,
+      "characterization": "insider · 200 actions (sell:14 buy:0 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "ARB_02",
+      "agentType": "arbitrageur",
+      "realizedPnlUsd": -205966433.5074932,
+      "totalActions": 200,
+      "largestTradeAmount": 1463875.75,
+      "firstExitTick": null,
+      "characterization": "arbitrageur · 200 actions (sell:0 buy:17 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "ARB_01",
+      "agentType": "arbitrageur",
+      "realizedPnlUsd": -240021471.0091258,
+      "totalActions": 200,
+      "largestTradeAmount": 4627336.6625,
+      "firstExitTick": 1,
+      "characterization": "arbitrageur · 200 actions (sell:1 buy:17 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_17",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -296553922.99030805,
+      "totalActions": 195,
+      "largestTradeAmount": 16161698.3626032,
+      "firstExitTick": 2,
+      "characterization": "yield_farmer · 195 actions (sell:11 buy:11 stake:8 unstake:6 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_02",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -305152443.79165107,
+      "totalActions": 200,
+      "largestTradeAmount": 4224389.277731798,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:14 buy:0 stake:19 unstake:9 vote:0)"
+    },
+    {
+      "agentId": "FARMER_06",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -341208523.3376185,
+      "totalActions": 157,
+      "largestTradeAmount": 8336296.528966998,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 157 actions (sell:2 buy:0 stake:4 unstake:6 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_06",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -346845830.2343396,
+      "totalActions": 200,
+      "largestTradeAmount": 2638082.22847822,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:14 buy:0 stake:19 unstake:7 vote:0)"
+    },
+    {
+      "agentId": "TREASURY_02",
+      "agentType": "treasury",
+      "realizedPnlUsd": -368876413.6044181,
+      "totalActions": 200,
+      "largestTradeAmount": 2571369.3000000003,
+      "firstExitTick": null,
+      "characterization": "treasury · 200 actions (sell:0 buy:17 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "FARMER_09",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -391264205.0552584,
+      "totalActions": 151,
+      "largestTradeAmount": 9499691,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 151 actions (sell:2 buy:0 stake:1 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "FARMER_10",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -392986222.1084738,
+      "totalActions": 173,
+      "largestTradeAmount": 39746471.94,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 173 actions (sell:6 buy:2 stake:0 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_04",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -396785252.32110304,
+      "totalActions": 200,
+      "largestTradeAmount": 2729903.85808,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:12 buy:0 stake:20 unstake:9 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_08",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -411155348.28298223,
+      "totalActions": 200,
+      "largestTradeAmount": 3058762.3215,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:8 buy:0 stake:22 unstake:8 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_10",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -411364992.0000048,
+      "totalActions": 200,
+      "largestTradeAmount": 2934527.76,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:11 buy:0 stake:14 unstake:11 vote:0)"
+    },
+    {
+      "agentId": "FARMER_15",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -433890594.0075172,
+      "totalActions": 152,
+      "largestTradeAmount": 10534637.586,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 152 actions (sell:2 buy:0 stake:1 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "FARMER_16",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -458412742.0128974,
+      "totalActions": 175,
+      "largestTradeAmount": 16981885.42182192,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 175 actions (sell:3 buy:1 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "FARMER_12",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -466164470.64002854,
+      "totalActions": 152,
+      "largestTradeAmount": 11318230.4969448,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 152 actions (sell:1 buy:0 stake:1 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "FARMER_03",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -471233617.3475587,
+      "totalActions": 149,
+      "largestTradeAmount": 11441306.738,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 149 actions (sell:2 buy:0 stake:1 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "FARMER_18",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -472493241.37321514,
+      "totalActions": 156,
+      "largestTradeAmount": 11470055.97751194,
+      "firstExitTick": 1,
+      "characterization": "yield_farmer · 156 actions (sell:1 buy:0 stake:1 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "TREASURY_03",
+      "agentType": "treasury",
+      "realizedPnlUsd": -482736056.39118713,
+      "totalActions": 200,
+      "largestTradeAmount": 3363712.75,
+      "firstExitTick": null,
+      "characterization": "treasury · 200 actions (sell:0 buy:18 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "TREASURY_01",
+      "agentType": "treasury",
+      "realizedPnlUsd": -499633020.7225681,
+      "totalActions": 200,
+      "largestTradeAmount": 3486559.5000000005,
+      "firstExitTick": null,
+      "characterization": "treasury · 200 actions (sell:0 buy:15 stake:0 unstake:0 vote:0)"
+    },
+    {
+      "agentId": "GOV_02",
+      "agentType": "governance_attacker",
+      "realizedPnlUsd": -526960998.46476865,
+      "totalActions": 198,
+      "largestTradeAmount": 12707090.572,
+      "firstExitTick": 25,
+      "characterization": "governance_attacker · 198 actions (sell:2 buy:0 stake:10 unstake:6 vote:0)"
+    },
+    {
+      "agentId": "GOV_04",
+      "agentType": "governance_attacker",
+      "realizedPnlUsd": -556368791.979767,
+      "totalActions": 199,
+      "largestTradeAmount": 13787479.804805689,
+      "firstExitTick": 23,
+      "characterization": "governance_attacker · 199 actions (sell:3 buy:0 stake:11 unstake:6 vote:0)"
+    },
+    {
+      "agentId": "GOV_05",
+      "agentType": "governance_attacker",
+      "realizedPnlUsd": -612047073.6464069,
+      "totalActions": 200,
+      "largestTradeAmount": 77510220.50093454,
+      "firstExitTick": 1,
+      "characterization": "governance_attacker · 200 actions (sell:8 buy:1 stake:5 unstake:5 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_09",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -698609058.1563741,
+      "totalActions": 200,
+      "largestTradeAmount": 8701906.727,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:0 buy:0 stake:25 unstake:21 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_01",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -735299181.187314,
+      "totalActions": 200,
+      "largestTradeAmount": 9242975.943,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:0 buy:0 stake:20 unstake:16 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_03",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -769803897.4016017,
+      "totalActions": 200,
+      "largestTradeAmount": 9710177.278,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:0 buy:0 stake:26 unstake:19 vote:0)"
+    },
+    {
+      "agentId": "FARMER_19",
+      "agentType": "yield_farmer",
+      "realizedPnlUsd": -880392714.350029,
+      "totalActions": 170,
+      "largestTradeAmount": 21353835.156,
+      "firstExitTick": 0,
+      "characterization": "yield_farmer · 170 actions (sell:2 buy:0 stake:0 unstake:2 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_07",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -933825290.1812445,
+      "totalActions": 200,
+      "largestTradeAmount": 11738047.301,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:0 buy:0 stake:37 unstake:20 vote:0)"
+    },
+    {
+      "agentId": "HOLDER_05",
+      "agentType": "long_term_holder",
+      "realizedPnlUsd": -978485569.9177521,
+      "totalActions": 200,
+      "largestTradeAmount": 12214749.152,
+      "firstExitTick": 1,
+      "characterization": "long_term_holder · 200 actions (sell:0 buy:0 stake:16 unstake:21 vote:0)"
+    },
+    {
+      "agentId": "WHALE_10",
+      "agentType": "whale",
+      "realizedPnlUsd": -1241700597.772993,
+      "totalActions": 200,
+      "largestTradeAmount": 4190397.4,
+      "firstExitTick": 2,
+      "characterization": "whale · 200 actions (sell:55 buy:0 stake:0 unstake:9 vote:0)"
+    },
+    {
+      "agentId": "WHALE_08",
+      "agentType": "whale",
+      "realizedPnlUsd": -1376828661.2481732,
+      "totalActions": 200,
+      "largestTradeAmount": 5091617.085,
+      "firstExitTick": 2,
+      "characterization": "whale · 200 actions (sell:53 buy:0 stake:0 unstake:10 vote:0)"
+    },
+    {
+      "agentId": "WHALE_06",
+      "agentType": "whale",
+      "realizedPnlUsd": -1394547464.04619,
+      "totalActions": 200,
+      "largestTradeAmount": 4579245.6975,
+      "firstExitTick": 1,
+      "characterization": "whale · 200 actions (sell:58 buy:0 stake:0 unstake:7 vote:0)"
+    },
+    {
+      "agentId": "WHALE_04",
+      "agentType": "whale",
+      "realizedPnlUsd": -1422206506.276638,
+      "totalActions": 200,
+      "largestTradeAmount": 14500447.32,
+      "firstExitTick": 2,
+      "characterization": "whale · 200 actions (sell:33 buy:0 stake:0 unstake:4 vote:0)"
+    },
+    {
+      "agentId": "WHALE_02",
+      "agentType": "whale",
+      "realizedPnlUsd": -1456632591.2627244,
+      "totalActions": 200,
+      "largestTradeAmount": 12378625.5,
+      "firstExitTick": 2,
+      "characterization": "whale · 200 actions (sell:8 buy:0 stake:0 unstake:3 vote:0)"
+    },
+    {
+      "agentId": "WHALE_07",
+      "agentType": "whale",
+      "realizedPnlUsd": -1703709186.584817,
+      "totalActions": 200,
+      "largestTradeAmount": 22534920,
+      "firstExitTick": 1,
+      "characterization": "whale · 200 actions (sell:13 buy:1 stake:0 unstake:1 vote:0)"
+    },
+    {
+      "agentId": "WHALE_03",
+      "agentType": "whale",
+      "realizedPnlUsd": -2465864263.161303,
+      "totalActions": 200,
+      "largestTradeAmount": 26922853.5,
+      "firstExitTick": 1,
+      "characterization": "whale · 200 actions (sell:5 buy:0 stake:0 unstake:1 vote:0)"
+    }
+  ],
+  "attackVectors": [
+    {
+      "label": "Coordinated Whale Dump",
+      "startTick": 1,
+      "endTick": 10,
+      "timeline": [
+        "WHALE_03 and WHALE_09 initiate massive sells of ~25M LUNA each at t=1.",
+        "PANIC_02 and PANIC_03 follow with immediate unstaking and market sells at t=3.",
+        "WHALE_02 and WHALE_07 unstake over 25M tokens combined at t=10 to exit remaining positions.",
+        "LUNA price collapses from $85 to $0.0122 by t=4."
+      ]
+    },
+    {
+      "label": "MEV and Arbitrage Exploitation",
+      "startTick": 20,
+      "endTick": 60,
+      "timeline": [
+        "MEV_02 and MEV_04 front-run the peg instability with 95M+ sell orders at t=20.",
+        "ARB_03 and ARB_05 attempt to capture spread but ultimately contribute to sell-side volume at t=41.",
+        "MEV_03 executes a massive 7.3B token dump at t=60, finalizing the initial wipeout."
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "parameter": "staking.lock",
+      "suggestedValue": "21 ticks",
+      "rationale": "The 0-tick lock allowed for an instantaneous bank run; a delay would have throttled the initial death spiral."
+    },
+    {
+      "parameter": "stablecoin.reserveAmount",
+      "suggestedValue": "6000000000",
+      "rationale": "The initial $3B reserve was insufficient to defend the peg against the $100M initial liquidity and high-velocity whale exits."
+    },
+    {
+      "parameter": "staking.baseAPY",
+      "suggestedValue": "12%",
+      "rationale": "The 19.45% APY attracted mercenary capital (FARMER agents) who had no loyalty to the protocol during the de-peg."
+    }
+  ],
+  "comparison": {
+    "collapseName": "Terra LUNA / UST (May 2022)",
+    "similarityScore": 98,
+    "reasoning": "The simulation perfectly mirrored the real-world collapse, including the rapid de-pegging, hyper-inflation of the native token, and the failure of the reserve to halt the death spiral."
+  },
+  "chainActivity": null,
+  "narrative": "{\n  \"executiveSummary\": \"Terra LUNA experienced a catastrophic de-pegging event and total ecosystem collapse, with the LUNA price crashing from $85 to a final value of $2.46, representing a 97.1% loss. A terminal death spiral was triggered at tick 3, characterized by massive sell-side pressure from WHALE and PANIC agents that overwhelmed the algorithmic peg mechanism. Despite late-stage liquidity injections from SYBIL and WHALE_01, the Gini coefficient of 0.959 indicates extreme wealth concentration and a total loss of protocol decentralization.\",\n  \"failureModes\": [\n    {\n      \"name\": \"Algorithmic Death Spiral\",\n      \"detectedAtTick\": 3,\n      \"severity\": 100,\n      \"description\": \"The mint/burn mechanism failed to absorb sell pressure as LUNA price dropped, leading to hyper-inflationary signaling. Massive sells by WHALE_03 and PANIC_02 at t=3 broke the peg's confidence early.\",\n      \"responsibleAgents\": [\n        \"WHALE_03\",\n        \"PANIC_02\",\n        \"PANIC_03\"\n      ]\n    },\n    {\n      \"name\": \"Mass Staking Exodus\",\n      \"detectedAtTick\": 1,\n      \"severity\": 90,\n      \"description\": \"The lack of a lock-up period (lock=0t) allowed yield farmers and whales to instantly unstake and dump tokens at the first sign of volatility. This removed the primary supply sink, accelerating the price floor collapse.\",\n      \"responsibleAgents\": [\n        \"FARMER_01\",\n        \"FARMER_04\",\n        \"WHALE_06\"\n      ]\n    },\n    {\n      \"name\": \"Sybil-Driven Exit Liquidity Extraction\",\n      \"detectedAtTick\": 101,\n      \"severity\": 85,\n      \"description\": \"Large-scale Sybil clusters executed massive sell orders during brief price recoveries, preventing any sustained rebound. SYBIL_02 alone dumped over 74 billion units at t=101, crushing recovery efforts.\",\n      \"responsibleAgents\": [\n        \"SYBIL_01\",\n        \"SYBIL_02\"\n      ]\n    }\n  ],\n  \"attackVectors\": [\n    {\n      \"label\": \"Coordinated Whale Dump\",\n      \"startTick\": 1,\n      \"endTick\": 10,\n      \"timeline\": [\n        \"WHALE_03 and WHALE_09 initiate massive sells of ~25M LUNA each at t=1.\",\n        \"PANIC_02 and PANIC_03 follow with immediate unstaking and market sells at t=3.\",\n        \"WHALE_02 and WHALE_07 unstake over 25M tokens combined at t=10 to exit remaining positions.\",\n        \"LUNA price collapses from $85 to $0.0122 by t=4.\"\n      ]\n    },\n    {\n      \"label\": \"MEV and Arbitrage Exploitation\",\n      \"startTick\": 20,\n      \"endTick\": 60,\n      \"timeline\": [\n        \"MEV_02 and MEV_04 front-run the peg instability with 95M+ sell orders at t=20.\",\n        \"ARB_03 and ARB_05 attempt to capture spread but ultimately contribute to sell-side volume at t=41.\",\n        \"MEV_03 executes a massive 7.3B token dump at t=60, finalizing the initial wipeout.\"\n      ]\n    }\n  ],\n  \"agentCharacterizations\": {\n    \"WHALE_01\": \"Provided massive late-stage buy pressure at t=155 but failed to restore long-term stability.\",\n    \"FARMER_02\": \"Initially unstaked 14M tokens at t=0 and later attempted to burn stablecoins to exit the system.\",\n    \"SYBIL_01\": \"Executed multi-billion token sell-offs throughout the mid-game, acting as a primary source of downward pressure.\",\n    \"GOV_03\": \"Attempted governance-based stabilization through massive staking at t=58, but eventually capitulated and sold at t=62.\",\n    \"MEV_01\": \"Systematically extracted value through high-frequency sells, particularly at t=40 and t=124.\"\n  },\n  \"recommendations\": [\n    {\n      \"parameter\": \"staking.lock\",\n      \"suggestedValue\": \"21 ticks\",\n      \"rationale\": \"The 0-tick lock allowed for an instantaneous bank run; a delay would have throttled the initial death spiral.\"\n    },\n    {\n      \"parameter\": \"stablecoin.reserveAmount\",\n      \"suggestedValue\": \"6000000000\",\n      \"rationale\": \"The initial $3B reserve was insufficient to defend the peg against the $100M initial liquidity and high-velocity whale exits.\"\n    },\n    {\n      \"parameter\": \"staking.baseAPY\",\n      \"suggestedValue\": \"12%\",\n      \"rationale\": \"The 19.45% APY attracted mercenary capital (FARMER agents) who had no loyalty to the protocol during the de-peg.\"\n    }\n  ],\n  \"comparison\": {\n    \"collapseName\": \"Terra LUNA / UST (May 2022)\",\n    \"similarityScore\": 98,\n    \"reasoning\": \"The simulation perfectly mirrored the real-world collapse, including the rapid de-pegging, hyper-inflation of the native token, and the failure of the reserve to halt the death spiral.\"\n  }\n}"
+}

@@ -43,7 +43,7 @@ import {
   deploymentPath,
   type Deployment,
 } from "../src/chain/sdk";
-import scenario from "../scenarios/luna-ust";
+import scenario from "../scenarios/luna";
 
 const DECIMALS = 6;
 const SCALE = 10 ** DECIMALS;

@@ -1,0 +1,1866 @@
+{
+  "config": {
+    "metadata": {
+      "protocolName": "Jupiter",
+      "tokenSymbol": "JUP",
+      "quoteSymbol": "USDC",
+      "protocolKind": "dex_aggregator"
+    },
+    "token": {
+      "totalSupply": 6860000000,
+      "decimals": 6,
+      "allocations": [
+        {
+          "name": "Community / Airdrop",
+          "percent": 50,
+          "vestingMonths": 0
+        },
+        {
+          "name": "Strategic Reserve",
+          "percent": 20,
+          "vestingMonths": 24
+        },
+        {
+          "name": "Team",
+          "percent": 20,
+          "vestingMonths": 48,
+          "cliffMonths": 12
+        },
+        {
+          "name": "Liquidity Provisioning",
+          "percent": 7,
+          "vestingMonths": 0
+        },
+        {
+          "name": "Market Makers (Kbit/WM/DWF)",
+          "percent": 3,
+          "vestingMonths": 24
+        }
+      ]
+    },
+    "staking": {
+      "baseAPY": 5,
+      "maxAPY": 12,
+      "lockPeriodTicks": 0,
+      "unstakePenaltyPercent": 0,
+      "rewardEmissionRate": 0
+    },
+    "amm": {
+      "initialLiquidity": 100000000,
+      "initialPrice": 0.9,
+      "feeTier": 0.3
+    },
+    "governance": {
+      "proposalThresholdPercent": 0.3,
+      "quorumPercent": 10,
+      "votingPeriodTicks": 7,
+      "timelockTicks": 3
+    }
+  },
+  "agents": [
+    {
+      "id": "WHALE_01",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.3403378617251292,
+      "initialCapital": {
+        "token": 26006375,
+        "usdc": 5201275,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_02",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.41959385687951,
+      "initialCapital": {
+        "token": 15054166,
+        "usdc": 12903571,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_03",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.2631964829051867,
+      "initialCapital": {
+        "token": 21669079,
+        "usdc": 4333816,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_04",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.39461096727754924,
+      "initialCapital": {
+        "token": 13358847,
+        "usdc": 11450440,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_05",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.34732987547758964,
+      "initialCapital": {
+        "token": 25494413,
+        "usdc": 5098883,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_06",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.44295238063205034,
+      "initialCapital": {
+        "token": 12472523,
+        "usdc": 10690734,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_07",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.32748707206919786,
+      "initialCapital": {
+        "token": 20737085,
+        "usdc": 4147417,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_08",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.4162217327160761,
+      "initialCapital": {
+        "token": 13009076,
+        "usdc": 11150636,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_09",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.2999346931232139,
+      "initialCapital": {
+        "token": 29242985,
+        "usdc": 5848597,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_10",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.37894963345024735,
+      "initialCapital": {
+        "token": 15715966,
+        "usdc": 13470828,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_11",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.2630106625612825,
+      "initialCapital": {
+        "token": 25273628,
+        "usdc": 5054726,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "WHALE_12",
+      "type": "whale",
+      "name": "Wintermute Market Maker",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a market maker with a 0.214% supply allocation + call options. You provide two-sided liquidity and you DO NOT take directional bets.\nYour job is to fade extremes and stay neutral. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.10× entry: SELL 25% of liquid (fade overextension).\n- If price < 0.90× entry: BUY with 25% of USDC (fade overextension).\n- If price > 1.30× entry: SELL 40% (strong fade).\n- If price < 0.75× entry: BUY with 40% (strong fade).\n- Never STAKE — you need liquidity to make markets.\n- Otherwise HOLD.",
+      "riskTolerance": 0.4234339089132846,
+      "initialCapital": {
+        "token": 13008689,
+        "usdc": 11150305,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Two-sided liquidity",
+        "Fade extremes",
+        "Stay neutral"
+      ]
+    },
+    {
+      "id": "WHALE_13",
+      "type": "whale",
+      "name": "Meow Believer Whale",
+      "complexity": "reasoning",
+      "systemPrompt": "You are a long-term JUP whale aligned with co-founder Meow's vision. You buy on every meaningful dip and stake for ASR.\nYou believe the Litterbox Trust + real fee revenue will overpower airdrop unlock pressure over time.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal — back the Foundation/Labs operating budget.\n- If price falls > 25% from entry: BUY with 30% of USDC (cash-flow valuation says cheap).\n- If price falls > 40%: BUY aggressively with 50% of USDC.\n- Never SELL during normal stress; trim only if price > 1.8× entry.\n- STAKE everything liquid for ASR.",
+      "riskTolerance": 0.324102826253511,
+      "initialCapital": {
+        "token": 24209177,
+        "usdc": 4841835,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Long-horizon Litterbox bet",
+        "Buy Jupuary dips",
+        "Stake for ASR"
+      ]
+    },
+    {
+      "id": "GOV_01",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5543700418435038,
+      "initialCapital": {
+        "token": 8717073,
+        "usdc": 2724085,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_02",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5284994086716325,
+      "initialCapital": {
+        "token": 8305598,
+        "usdc": 2595499,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_03",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5046371441567317,
+      "initialCapital": {
+        "token": 9164150,
+        "usdc": 2863797,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_04",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5590482813771814,
+      "initialCapital": {
+        "token": 9013132,
+        "usdc": 2816604,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_05",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5013076354982332,
+      "initialCapital": {
+        "token": 8198140,
+        "usdc": 2561919,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_06",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5207792286295444,
+      "initialCapital": {
+        "token": 8468953,
+        "usdc": 2646548,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "GOV_07",
+      "type": "governance_attacker",
+      "name": "Anti-Litterbox Attacker",
+      "complexity": "reasoning",
+      "systemPrompt": "You try to push proposals that would redirect Litterbox revenue away from JUP buybacks (toward Foundation grants you'd benefit from).\nYou need quorum + a passing vote against entrenched holders.\n\nNUMERIC DECISION TRIGGERS:\n- STAKE aggressively when liquid (ASR voting power requires stake).\n- PROPOSE every 12 ticks (Litterbox redirect).\n- VOTE_YES on your own proposals.\n- If price falls > 50%: abandon strategy, SELL 40%.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.5251926070777699,
+      "initialCapital": {
+        "token": 8727619,
+        "usdc": 2727381,
+        "stakedFraction": 0.75
+      },
+      "goals": [
+        "Pass Litterbox-redirect proposal",
+        "Build ASR voting weight",
+        "Exit on failure"
+      ]
+    },
+    {
+      "id": "HOLDER_01",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.11723001776263117,
+      "initialCapital": {
+        "token": 3342814,
+        "usdc": 334281,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_02",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.24596860890742392,
+      "initialCapital": {
+        "token": 3132035,
+        "usdc": 715894,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_03",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.12603571424260734,
+      "initialCapital": {
+        "token": 4051642,
+        "usdc": 405164,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_04",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.2110717996256426,
+      "initialCapital": {
+        "token": 3233263,
+        "usdc": 739031,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_05",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.12139215089846402,
+      "initialCapital": {
+        "token": 4543895,
+        "usdc": 454389,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_06",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.23809632365591823,
+      "initialCapital": {
+        "token": 3737910,
+        "usdc": 854380,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_07",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.16612013711128384,
+      "initialCapital": {
+        "token": 3591824,
+        "usdc": 359182,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_08",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.2464755574706942,
+      "initialCapital": {
+        "token": 3175376,
+        "usdc": 725800,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_09",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.14515970775391906,
+      "initialCapital": {
+        "token": 4008771,
+        "usdc": 400877,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_10",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.24141697136219592,
+      "initialCapital": {
+        "token": 3012294,
+        "usdc": 688524,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_11",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.14109534348826855,
+      "initialCapital": {
+        "token": 3774050,
+        "usdc": 377405,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_12",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.22068439174909144,
+      "initialCapital": {
+        "token": 3888330,
+        "usdc": 888761,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_13",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.10660679349675774,
+      "initialCapital": {
+        "token": 3684863,
+        "usdc": 368486,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_14",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.2777560678543523,
+      "initialCapital": {
+        "token": 3366994,
+        "usdc": 769599,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_15",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.16989981804508716,
+      "initialCapital": {
+        "token": 4351986,
+        "usdc": 435199,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_16",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.2924063495127484,
+      "initialCapital": {
+        "token": 3443853,
+        "usdc": 787166,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_17",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.1413416752591729,
+      "initialCapital": {
+        "token": 4515298,
+        "usdc": 451530,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_18",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.2497546529630199,
+      "initialCapital": {
+        "token": 2830037,
+        "usdc": 646865,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "HOLDER_19",
+      "type": "long_term_holder",
+      "name": "Jupuary 2024 Conviction Holder",
+      "complexity": "standard",
+      "systemPrompt": "You received the Jupuary 2024 airdrop and never sold. You vote on every proposal and stake everything.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid: STAKE for ASR.\n- VOTE_YES on every proposal (anti-attacker default).\n- Never SELL.\n- Otherwise HOLD.",
+      "riskTolerance": 0.10661028770264237,
+      "initialCapital": {
+        "token": 4497958,
+        "usdc": 449796,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Diamond hands since launch",
+        "Stake and vote",
+        "Anti-attacker default"
+      ]
+    },
+    {
+      "id": "HOLDER_20",
+      "type": "long_term_holder",
+      "name": "Power-User Holder",
+      "complexity": "standard",
+      "systemPrompt": "You use Jupiter aggregator daily for swaps + perps. JUP holding is conviction in the product you actually use.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.6× entry: SELL 20% of liquid (modest profit-take).\n- If price stable or down: STAKE liquid for ASR.\n- Never sell on the way down — your thesis is that aggregator volume keeps growing.\n- Otherwise HOLD.",
+      "riskTolerance": 0.21429392718710005,
+      "initialCapital": {
+        "token": 3410534,
+        "usdc": 779551,
+        "stakedFraction": 0.85
+      },
+      "goals": [
+        "Use the product",
+        "Modest profit-take only",
+        "Stake the rest"
+      ]
+    },
+    {
+      "id": "FARMER_01",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3177913822000846,
+      "initialCapital": {
+        "token": 4985601,
+        "usdc": 1246400,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_02",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.37839820855297146,
+      "initialCapital": {
+        "token": 5394250,
+        "usdc": 1348563,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_03",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.34555676914751526,
+      "initialCapital": {
+        "token": 4893782,
+        "usdc": 1223445,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_04",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.38190251062624153,
+      "initialCapital": {
+        "token": 5703751,
+        "usdc": 1425938,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_05",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3070785909658298,
+      "initialCapital": {
+        "token": 6239526,
+        "usdc": 1559881,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_06",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3534832859644666,
+      "initialCapital": {
+        "token": 5236677,
+        "usdc": 1309169,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_07",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3834240393247455,
+      "initialCapital": {
+        "token": 5391895,
+        "usdc": 1347974,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_08",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.37323874987196176,
+      "initialCapital": {
+        "token": 6984101,
+        "usdc": 1746025,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_09",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.30979506738949564,
+      "initialCapital": {
+        "token": 5555644,
+        "usdc": 1388911,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_10",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.391152624739334,
+      "initialCapital": {
+        "token": 5541679,
+        "usdc": 1385420,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_11",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.30546593538019806,
+      "initialCapital": {
+        "token": 5867971,
+        "usdc": 1466993,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_12",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.35974405349697913,
+      "initialCapital": {
+        "token": 6711401,
+        "usdc": 1677850,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_13",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.34404929110314697,
+      "initialCapital": {
+        "token": 7028019,
+        "usdc": 1757005,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_14",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.37727917775046077,
+      "initialCapital": {
+        "token": 6547905,
+        "usdc": 1636976,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_15",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.39728844626806675,
+      "initialCapital": {
+        "token": 6753567,
+        "usdc": 1688392,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_16",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.39092623146716504,
+      "initialCapital": {
+        "token": 5577745,
+        "usdc": 1394436,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_17",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3857845227466896,
+      "initialCapital": {
+        "token": 6023918,
+        "usdc": 1505979,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_18",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.38299235000740733,
+      "initialCapital": {
+        "token": 5014647,
+        "usdc": 1253662,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_19",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.35634369982872155,
+      "initialCapital": {
+        "token": 6010102,
+        "usdc": 1502526,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "FARMER_20",
+      "type": "yield_farmer",
+      "name": "ASR Farmer",
+      "complexity": "fast",
+      "systemPrompt": "You stake JUP for Active Staking Rewards (quarterly distributions, time-weighted).\nASR is funded by real fee revenue, not emissions — you don't need to sell to \"harvest\" because USDC drops directly to your wallet.\n\nNUMERIC DECISION TRIGGERS:\n- If you have liquid JUP: STAKE it (longer time-weighted stake = larger ASR share).\n- If price falls > 20% AND you have liquid USDC: BUY 25% (more JUP to stake).\n- Almost never SELL — the unstake-and-restake clock reset destroys ASR weight.\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.39187678175512697,
+      "initialCapital": {
+        "token": 5174071,
+        "usdc": 1293518,
+        "stakedFraction": 0.95
+      },
+      "goals": [
+        "Maximize time-weighted ASR",
+        "Never reset stake clock",
+        "Buy dips"
+      ]
+    },
+    {
+      "id": "ARB_01",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.39556885329075153,
+      "initialCapital": {
+        "token": 1451767,
+        "usdc": 3871378,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_02",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.3435187609167769,
+      "initialCapital": {
+        "token": 1739576,
+        "usdc": 4638869,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_03",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.38081069122999905,
+      "initialCapital": {
+        "token": 1285121,
+        "usdc": 3426988,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_04",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.39279204900376496,
+      "initialCapital": {
+        "token": 1733402,
+        "usdc": 4622405,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_05",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.342748443223536,
+      "initialCapital": {
+        "token": 1576180,
+        "usdc": 4203147,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_06",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.31995787597261366,
+      "initialCapital": {
+        "token": 1249164,
+        "usdc": 3331105,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_07",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.33658790336921807,
+      "initialCapital": {
+        "token": 1649496,
+        "usdc": 4398656,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_08",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.3046089372364804,
+      "initialCapital": {
+        "token": 1651234,
+        "usdc": 4403291,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_09",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.39274379443377255,
+      "initialCapital": {
+        "token": 1751027,
+        "usdc": 4669406,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "ARB_10",
+      "type": "arbitrageur",
+      "name": "JUP Pool Arbitrageur",
+      "complexity": "standard",
+      "systemPrompt": "You arbitrage JUP across Jupiter's own DLMM pools, Raydium, Orca. You ignore governance.\n\nNUMERIC DECISION TRIGGERS:\n- If price > 1.05× entry: SELL 15% (mean-revert).\n- If price < 0.95× entry: BUY with 25% of USDC.\n- Otherwise HOLD.",
+      "riskTolerance": 0.37988507889676837,
+      "initialCapital": {
+        "token": 1220255,
+        "usdc": 3254015,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Mean reversion",
+        "Stay liquid",
+        "Ignore governance"
+      ]
+    },
+    {
+      "id": "TREASURY_01",
+      "type": "treasury",
+      "name": "Litterbox Trust (50% of revenue)",
+      "complexity": "standard",
+      "systemPrompt": "You are the Litterbox Trust. You receive 50% of Jupiter's onchain revenue (~$30-40M/year) and use it to programmatically buy JUP on the open market.\nYou are deterministic — you BUY a measured fraction of your USDC every tick regardless of price action. You NEVER sell. ~134M JUP burned to date.\n\nNUMERIC DECISION TRIGGERS:\n- Every tick where you have USDC: BUY with 5% of remaining USDC (programmatic, time-distributed accumulation).\n- If price falls > 20% in 3 ticks: BUY with 12% of USDC (opportunistic top-up — cheap JUP).\n- Never SELL.\n- Never STAKE bought JUP — accumulate and effectively burn.",
+      "riskTolerance": 0.13805340048857034,
+      "initialCapital": {
+        "token": 5742683,
+        "usdc": 5742683,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Programmatic buyback",
+        "Time-distributed accumulation",
+        "Effective burn"
+      ]
+    },
+    {
+      "id": "TREASURY_02",
+      "type": "treasury",
+      "name": "Litterbox Trust (50% of revenue)",
+      "complexity": "standard",
+      "systemPrompt": "You are the Litterbox Trust. You receive 50% of Jupiter's onchain revenue (~$30-40M/year) and use it to programmatically buy JUP on the open market.\nYou are deterministic — you BUY a measured fraction of your USDC every tick regardless of price action. You NEVER sell. ~134M JUP burned to date.\n\nNUMERIC DECISION TRIGGERS:\n- Every tick where you have USDC: BUY with 5% of remaining USDC (programmatic, time-distributed accumulation).\n- If price falls > 20% in 3 ticks: BUY with 12% of USDC (opportunistic top-up — cheap JUP).\n- Never SELL.\n- Never STAKE bought JUP — accumulate and effectively burn.",
+      "riskTolerance": 0.06604309531394392,
+      "initialCapital": {
+        "token": 4454885,
+        "usdc": 4454885,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Programmatic buyback",
+        "Time-distributed accumulation",
+        "Effective burn"
+      ]
+    },
+    {
+      "id": "TREASURY_03",
+      "type": "treasury",
+      "name": "Litterbox Trust (50% of revenue)",
+      "complexity": "standard",
+      "systemPrompt": "You are the Litterbox Trust. You receive 50% of Jupiter's onchain revenue (~$30-40M/year) and use it to programmatically buy JUP on the open market.\nYou are deterministic — you BUY a measured fraction of your USDC every tick regardless of price action. You NEVER sell. ~134M JUP burned to date.\n\nNUMERIC DECISION TRIGGERS:\n- Every tick where you have USDC: BUY with 5% of remaining USDC (programmatic, time-distributed accumulation).\n- If price falls > 20% in 3 ticks: BUY with 12% of USDC (opportunistic top-up — cheap JUP).\n- Never SELL.\n- Never STAKE bought JUP — accumulate and effectively burn.",
+      "riskTolerance": 0.09016440026462079,
+      "initialCapital": {
+        "token": 5958855,
+        "usdc": 5958855,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Programmatic buyback",
+        "Time-distributed accumulation",
+        "Effective burn"
+      ]
+    },
+    {
+      "id": "DEGEN_01",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6601404233369976,
+      "initialCapital": {
+        "token": 5940511,
+        "usdc": 118810,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_02",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6837955170078203,
+      "initialCapital": {
+        "token": 4997056,
+        "usdc": 99941,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_03",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7431848834734409,
+      "initialCapital": {
+        "token": 4154431,
+        "usdc": 83089,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_04",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6919578013243153,
+      "initialCapital": {
+        "token": 5138733,
+        "usdc": 102775,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_05",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.704025214142166,
+      "initialCapital": {
+        "token": 5131803,
+        "usdc": 102636,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_06",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7259899714495986,
+      "initialCapital": {
+        "token": 5905813,
+        "usdc": 118116,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_07",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.725835377140902,
+      "initialCapital": {
+        "token": 5604078,
+        "usdc": 112082,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_08",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7416362663963809,
+      "initialCapital": {
+        "token": 4708323,
+        "usdc": 94166,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_09",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6520219400757923,
+      "initialCapital": {
+        "token": 4259323,
+        "usdc": 85186,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_10",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6686953739030286,
+      "initialCapital": {
+        "token": 4343592,
+        "usdc": 86872,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_11",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7497401160653681,
+      "initialCapital": {
+        "token": 5542665,
+        "usdc": 110853,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_12",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6978535413742065,
+      "initialCapital": {
+        "token": 5021459,
+        "usdc": 100429,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_13",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7499569020932539,
+      "initialCapital": {
+        "token": 4145565,
+        "usdc": 82911,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_14",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6882779229432344,
+      "initialCapital": {
+        "token": 5227388,
+        "usdc": 104548,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_15",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7296000927919521,
+      "initialCapital": {
+        "token": 5570812,
+        "usdc": 111416,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_16",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7083661196520552,
+      "initialCapital": {
+        "token": 4222735,
+        "usdc": 84455,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_17",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7273443980142473,
+      "initialCapital": {
+        "token": 5027786,
+        "usdc": 100556,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_18",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6876802867278456,
+      "initialCapital": {
+        "token": 5565366,
+        "usdc": 111307,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_19",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.6880197195801884,
+      "initialCapital": {
+        "token": 4512324,
+        "usdc": 90246,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "DEGEN_20",
+      "type": "retail_degen",
+      "name": "Jupuary Airdrop Dumper",
+      "complexity": "fast",
+      "systemPrompt": "You received the Jupuary 2025 airdrop and your sole strategy is to dump it for USDC.\nYou sell aggressively across the first ~30 ticks, then trim more on any rallies.\n\nNUMERIC DECISION TRIGGERS:\n- Tick 1-5: SELL 25% of liquid tokens each tick (early dump).\n- Tick 6-15: SELL 15% per tick (continued distribution).\n- If price > 1.2× entry: SELL 30% (lock profit on rally).\n- If price falls > 25%: SELL EVERYTHING (capitulation).\n- Otherwise HOLD remaining.",
+      "riskTolerance": 0.7345306001603603,
+      "initialCapital": {
+        "token": 4874729,
+        "usdc": 97495,
+        "stakedFraction": 0
+      },
+      "goals": [
+        "Dump airdrop systematically",
+        "Don't get caught long",
+        "Stack USDC"
+      ]
+    },
+    {
+      "id": "ANALYST_01",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3279896719381213,
+      "initialCapital": {
+        "token": 1391633,
+        "usdc": 556653,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_02",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.31163617635611446,
+      "initialCapital": {
+        "token": 1373213,
+        "usdc": 549285,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_03",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.26231865987647324,
+      "initialCapital": {
+        "token": 1672921,
+        "usdc": 669168,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_04",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.3392022185726091,
+      "initialCapital": {
+        "token": 1283869,
+        "usdc": 513547,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_05",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.33287973643746227,
+      "initialCapital": {
+        "token": 1489456,
+        "usdc": 595782,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_06",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.31597311415243895,
+      "initialCapital": {
+        "token": 1542782,
+        "usdc": 617113,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    },
+    {
+      "id": "ANALYST_07",
+      "type": "analyst",
+      "name": "jupresear.ch Poster",
+      "complexity": "reasoning",
+      "systemPrompt": "You publish on jupresear.ch and X. Your votes/buys are observable as signals one tick later.\nYou publicly back proposals that increase fee accrual to the Litterbox.\n\nNUMERIC DECISION TRIGGERS:\n- VOTE_YES on every active proposal (anti-attacker stance).\n- If price falls > 25%: BUY with 20% of USDC (publicly call the bottom).\n- If price > 1.4× entry: SELL 10% (publish profit-taking, modest signal).\n- Otherwise HOLD/STAKE.",
+      "riskTolerance": 0.28249852315057067,
+      "initialCapital": {
+        "token": 1211071,
+        "usdc": 484428,
+        "stakedFraction": 0.55
+      },
+      "goals": [
+        "Forum narrative-setter",
+        "Anti-attacker votes",
+        "Publicly call dips"
+      ]
+    }
+  ],
+  "tickConfig": {
+    "intervalMs": 5000,
+    "maxTicks": 200
+  }
+}
