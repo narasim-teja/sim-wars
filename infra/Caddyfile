@@ -24,6 +24,11 @@
     flush_interval -1
   }
 
+  # /api/extract/* lives in the Next.js app (PDF upload + URL extraction
+  # backed by an LLM call). Caddy sorts directives by specificity so this
+  # wins over the catch-all /api/* below.
+  reverse_proxy /api/extract/* localhost:3000
+
   # API + health (compressed)
   reverse_proxy /api/* localhost:8787
   reverse_proxy /health localhost:8787

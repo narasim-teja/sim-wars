@@ -32,6 +32,21 @@ else
   echo "  on-chain mode: disabled (set DEPLOYER_KEYPAIR_SECRET_ARN to enable)"
 fi
 
+# Whitepaper extraction (PDF upload + URL paste → LLM-drafted SimulationConfig)
+# is server-side keyed because it runs as a Next.js API route, not via the
+# user's browser. Both vars must be set or the extractor throws at request
+# time. When unset we ship without extraction — demos still work; user-driven
+# uploads return 500. Mirrors the DEPLOYER_KEYPAIR_SECRET_ARN opt-in pattern.
+EXTRACTION_ENV=""
+if [ -n "${OPENROUTER_API_KEY:-}" ] && [ -n "${OPENROUTER_EXTRACTION_PRESET:-}" ]; then
+  EXTRACTION_ENV=",
+          \"OPENROUTER_API_KEY\": \"${OPENROUTER_API_KEY}\",
+          \"OPENROUTER_EXTRACTION_PRESET\": \"${OPENROUTER_EXTRACTION_PRESET}\""
+  echo "  extraction:    enabled (server-side OpenRouter key wired)"
+else
+  echo "  extraction:    disabled (set OPENROUTER_API_KEY + OPENROUTER_EXTRACTION_PRESET to enable)"
+fi
+
 # Source configuration — the only block that update-service and create-service
 # share verbatim. Build it once.
 #
@@ -54,7 +69,7 @@ SOURCE_CONFIG=$(cat <<EOF
         "PUBLIC_PORT": "8080",
         "SIM_RATE_LIMIT_PER_IP": "10",
         "SIM_RATE_LIMIT_PER_KEY": "20",
-        "SIM_RATE_LIMIT_WINDOW_MS": "3600000"${ONCHAIN_ENV}
+        "SIM_RATE_LIMIT_WINDOW_MS": "3600000"${ONCHAIN_ENV}${EXTRACTION_ENV}
       }
     }
   },
