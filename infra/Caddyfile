@@ -14,16 +14,17 @@
 }
 
 :8080 {
-  encode gzip zstd
+  # encode is intentionally NOT applied at this level — we want SSE
+  # (text/event-stream) responses to flow unbuffered. The Next.js + API
+  # JSON paths get gzip from their own servers anyway.
 
-  # WebSocket: /ws/sim/<id>. Caddy auto-handles the Upgrade header.
-  reverse_proxy /ws/* localhost:8787 {
-    transport http {
-      versions 1.1
-    }
+  # SSE: /api/sim/:id/events. Tell Caddy to flush every write so the
+  # browser's EventSource gets each event the moment the server enqueues it.
+  reverse_proxy /api/sim/*/events localhost:8787 {
+    flush_interval -1
   }
 
-  # API + health
+  # API + health (compressed)
   reverse_proxy /api/* localhost:8787
   reverse_proxy /health localhost:8787
 

@@ -37,7 +37,19 @@ interface SpawnedRun {
 }
 
 const runs = new Map<string, SpawnedRun>();
-const wsClients = new Map<string, Set<{ send: (data: string) => void }>>(); // simId → sockets
+
+/**
+ * SSE subscribers per simId. Each client is the controller side of a
+ * `text/event-stream` Response. We swapped from WebSockets after AWS App
+ * Runner's Envoy edge layer was confirmed to reject WS upgrades with 403
+ * (App Runner does not support WebSockets); SSE is one-way which matches
+ * what both demo replay and live-sim event streams need.
+ */
+interface SseClient {
+  enqueue: (line: string) => void;
+  close: () => void;
+}
+const sseClients = new Map<string, Set<SseClient>>(); // simId → SSE controllers
 
 // SIM_API_PORT takes precedence so we can override on platforms that
 // reserve PORT for their own use (AWS App Runner injects PORT to match
@@ -365,7 +377,7 @@ async function handleCreate(req: Request): Promise<Response> {
   // Touch events file so tailers can open it immediately
   writeFileSync(paths.eventsFile, "");
 
-  // Track the run before any async deploy so WS clients connecting in the
+  // Track the run before any async deploy so SSE clients connecting in the
   // gap between deploy + worker spawn can subscribe and tail events.
   runs.set(simId, { simId, process: null, startedAt: Date.now(), eventsOffset: 0 });
 
@@ -390,8 +402,8 @@ async function handleCreate(req: Request): Promise<Response> {
 
   if (body.onChain) {
     // Fire-and-forget the deploy → worker chain. The HTTP response returns
-    // immediately so the frontend can subscribe to /ws/sim/:id and watch
-    // the chain:deploy:* events stream in.
+    // immediately so the frontend can subscribe to /api/sim/:id/events and
+    // watch the chain:deploy:* events stream in.
     runDeployThenWorker(simId, persistedBody, deploymentPlan, workerEnv).catch((err) => {
       appendEvent(paths.eventsFile, {
         kind: "chain:deploy:error",
@@ -670,9 +682,9 @@ function handleDemos(): Response {
 
 /**
  * Boot-time scan of `runs-demo/` so demo simIds are registered in the
- * `runs` map and the WS handler can find them. We point `eventsOffset`
+ * `runs` map and the SSE handler can find them. We point `eventsOffset`
  * at the file size so the periodic tailer never re-emits — the on-connect
- * full-replay in `onWsOpen` is the only delivery path for demos.
+ * full-replay in `handleEventStream` is the only delivery path for demos.
  */
 function registerDemos(): void {
   if (!existsSync(DEMO_RUNS_DIR)) return;
@@ -716,13 +728,13 @@ function handleList(): Response {
 
 /**
  * Tail the NDJSON events file from `offset` and deliver each new line to all
- * subscribed WS clients for this run. Returns the new offset.
+ * subscribed SSE clients for this run.
  */
 async function tailEvents(simId: string): Promise<void> {
   const run = runs.get(simId);
   if (!run) return;
   // Demo runs are pre-registered with `eventsOffset` set to file size so this
-  // is a no-op for them — `onWsOpen` is their only delivery path.
+  // is a no-op for them — the SSE handler's start() phase replays history.
   const paths = resolveRunPaths(simId);
   if (!existsSync(paths.eventsFile)) return;
   const size = statSync(paths.eventsFile).size;
@@ -735,10 +747,10 @@ async function tailEvents(simId: string): Promise<void> {
     readSync(fd, buf, 0, buf.length, run.eventsOffset);
     run.eventsOffset = size;
     const lines = buf.toString("utf-8").split("\n").filter(Boolean);
-    const clients = wsClients.get(simId);
+    const clients = sseClients.get(simId);
     if (!clients || clients.size === 0) return;
     for (const line of lines) {
-      for (const c of clients) c.send(line);
+      for (const c of clients) c.enqueue(line);
     }
   } finally {
     const { closeSync } = await import("node:fs");
@@ -761,54 +773,137 @@ function startRateLimitPruner(): void {
   }, 5 * 60_000);
 }
 
-function onWsOpen(ws: { data: { simId: string }; send: (d: string) => void }) {
-  const { simId } = ws.data;
-  if (!wsClients.has(simId)) wsClients.set(simId, new Set());
-  wsClients.get(simId)!.add(ws as unknown as { send: (d: string) => void });
-  // On connect, replay full history so the client catches up without polling.
-  // resolveRunPaths falls back to the read-only `runs-demo/` dir, which is how
-  // baked-in demo recordings get streamed to fresh clients.
-  const paths = resolveRunPaths(simId);
-  if (existsSync(paths.eventsFile)) {
-    const text = readFileSync(paths.eventsFile, "utf-8");
-    for (const line of text.split("\n")) if (line) ws.send(line);
-  }
+/**
+ * SSE event stream for a sim. On connect we replay the full events.ndjson
+ * (so the client gets full history without polling — same model as the old
+ * SSE path), then keep the stream open so `tailEvents` can push new lines as
+ * the run progresses. Demos use the same path: they're pre-registered with
+ * an at-EOF eventsOffset so tailEvents is a no-op for them and the history
+ * replay is the only delivery.
+ *
+ * Heartbeats every 15s prevent intermediate proxies (Caddy, App Runner's
+ * Envoy edge, etc.) from idling the connection out.
+ */
+function handleEventStream(simId: string, req: Request): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+        try { controller.enqueue(chunk); } catch { closed = true; }
+      };
+
+      const client: SseClient = {
+        enqueue: (line: string) => safeEnqueue(encoder.encode(`data: ${line}\n\n`)),
+        close: () => {
+          if (closed) return;
+          closed = true;
+          try { controller.close(); } catch { /* already closed */ }
+        },
+      };
+      // Stash the raw enqueue so the global heartbeat ticker can write a
+      // comment line without going through the `data:` framing.
+      (client as SseClient & { sendComment: (s: string) => void }).sendComment =
+        (s: string) => safeEnqueue(encoder.encode(`: ${s}\n\n`));
+
+      // 1. Subscribe BEFORE replaying history — otherwise tailEvents could
+      //    fire between the file read and the .add() and we'd miss events.
+      if (!sseClients.has(simId)) sseClients.set(simId, new Set());
+      sseClients.get(simId)!.add(client);
+
+      // 2. Send an immediate "connected" comment so any intermediate proxy
+      //    that holds the response until first byte starts streaming now.
+      (client as SseClient & { sendComment: (s: string) => void }).sendComment("connected");
+
+      // 3. Replay full history (resolveRunPaths falls back to runs-demo/
+      //    so baked demo recordings stream the same way as live runs).
+      const paths = resolveRunPaths(simId);
+      if (existsSync(paths.eventsFile)) {
+        const text = readFileSync(paths.eventsFile, "utf-8");
+        for (const line of text.split("\n")) if (line) client.enqueue(line);
+      }
+
+      // 4. Cleanup on client disconnect (browser tab close, navigation, etc).
+      //    Heartbeats are pumped by the global ticker (see startSseHeartbeat)
+      //    — per-stream setInterval inside `start()` doesn't fire reliably
+      //    in Bun's streaming context.
+      const onAbort = () => {
+        const set = sseClients.get(simId);
+        if (set) set.delete(client);
+        client.close();
+      };
+      req.signal.addEventListener("abort", onAbort);
+    },
+    cancel() {
+      // Stream-level cancel (rare — usually we get the abort signal first).
+      // Membership is keyed on the controller closure above; nothing to do here.
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      // nginx hint, harmless on Caddy/Envoy — disables proxy buffering.
+      "X-Accel-Buffering": "no",
+      ...corsHeaders(),
+    },
+  });
 }
 
-function onWsClose(ws: { data: { simId: string }; send: (d: string) => void }) {
-  const set = wsClients.get(ws.data.simId);
-  if (set) set.delete(ws as unknown as { send: (d: string) => void });
+/**
+ * Single global ticker that emits an SSE comment heartbeat to every
+ * subscriber every 15s. App Runner's Envoy edge idles connections out
+ * around 60s of silence; Caddy is more forgiving but adding this here
+ * costs nothing and keeps the path proxy-safe end-to-end.
+ *
+ * Why a single global vs per-stream `setInterval`: setInterval started
+ * inside a `ReadableStream`'s `start()` callback doesn't fire reliably
+ * in Bun (the timer appears to be lost when the request handler returns).
+ * One module-level interval iterating the subscriber map sidesteps the
+ * problem entirely.
+ */
+function startSseHeartbeat(): void {
+  setInterval(() => {
+    for (const [, clients] of sseClients) {
+      for (const c of clients) {
+        const sendComment = (c as SseClient & { sendComment?: (s: string) => void }).sendComment;
+        if (sendComment) sendComment("hb");
+      }
+    }
+  }, 15_000);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// HTTP + WebSocket server
+// HTTP + SSE server
 // ────────────────────────────────────────────────────────────────────────────
 
 mkdirSync(RUNS_DIR, { recursive: true });
 registerDemos();
 startTailers();
+startSseHeartbeat();
 startRateLimitPruner();
 
-interface WsData {
-  simId: string;
-}
-
-const server = Bun.serve<WsData, never>({
+const server = Bun.serve({
   port: PORT,
-  async fetch(req, srv) {
+  async fetch(req) {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders() });
     }
 
-    // WebSocket upgrade: /ws/sim/:id
-    const wsMatch = url.pathname.match(/^\/ws\/sim\/([^/]+)$/);
-    if (wsMatch) {
-      const simId = wsMatch[1]!;
-      const upgraded = srv.upgrade(req, { data: { simId } });
-      if (upgraded) return undefined as unknown as Response;
-      return new Response("upgrade failed", { status: 400 });
+    // SSE event stream: /api/sim/:id/events
+    // Replaces the old /ws/sim/:id WebSocket path — App Runner's Envoy edge
+    // rejects WS upgrades with 403, so we stream replay + live events as
+    // text/event-stream instead. One-way is all the client needs.
+    const eventsMatch = url.pathname.match(/^\/api\/sim\/([^/]+)\/events$/);
+    if (eventsMatch && req.method === "GET") {
+      return handleEventStream(eventsMatch[1]!, req);
     }
 
     if (req.method === "GET" && url.pathname === "/health") {
@@ -846,17 +941,6 @@ const server = Bun.serve<WsData, never>({
 
     return new Response("not found", { status: 404, headers: corsHeaders() });
   },
-  websocket: {
-    open(ws) {
-      onWsOpen(ws as unknown as { data: { simId: string }; send: (d: string) => void });
-    },
-    message() {
-      /* client → server messages unused for now */
-    },
-    close(ws) {
-      onWsClose(ws as unknown as { data: { simId: string }; send: (d: string) => void });
-    },
-  },
 });
 
 console.log(`sim-wars API listening on http://localhost:${server.port}`);
@@ -868,4 +952,4 @@ console.log(`  POST /api/sim/:id/resume       — resume`);
 console.log(`  POST /api/sim/:id/abort        — abort`);
 console.log(`  POST /api/scenarios/draft      — LLM-drafted SimulationConfig`);
 console.log(`  GET  /api/sim/:id/report       — post-sim report (JSON)`);
-console.log(`  WS   /ws/sim/:id               — event stream (NDJSON)`);
+console.log(`  GET  /api/sim/:id/events       — event stream (SSE / text/event-stream)`);

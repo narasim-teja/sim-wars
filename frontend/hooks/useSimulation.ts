@@ -141,11 +141,11 @@ function addUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
 }
 
 type Action =
-  | { type: "ws"; status: "connecting" | "open" | "closed" }
+  | { type: "conn"; status: "connecting" | "open" | "closed" }
   | { type: "event"; event: WorkerEvent };
 
 function reducer(state: SimUiState, action: Action): SimUiState {
-  if (action.type === "ws") return { ...state, connection: action.status };
+  if (action.type === "conn") return { ...state, connection: action.status };
 
   const ev = action.event;
   switch (ev.kind) {
@@ -427,38 +427,50 @@ function pickEdgeTarget(action: AgentAction, sim: SimulationState): string {
 }
 
 export interface UseSimulationOptions {
-  /** WS host — defaults to `NEXT_PUBLIC_SIM_API` or `http://localhost:8787`. */
+  /** API host — defaults to `NEXT_PUBLIC_SIM_API` or `http://localhost:8787`. */
   apiBase?: string;
 }
 
+/**
+ * Subscribes to a sim's event stream over Server-Sent Events. We were on
+ * WebSockets until AWS App Runner's Envoy edge was confirmed to reject WS
+ * upgrades with 403 — SSE is one-way, which is all we need (server pushes
+ * NDJSON event lines, client renders them), and it works through every
+ * intermediate proxy in the stack.
+ */
 export function useSimulation(simId: string, opts: UseSimulationOptions = {}) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
-  const wsRef = useRef<WebSocket | null>(null);
+  const sourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!simId) return;
     const apiBase = opts.apiBase ?? process.env.NEXT_PUBLIC_SIM_API ?? "http://localhost:8787";
-    const wsUrl = apiBase.replace(/^http/, "ws") + `/ws/sim/${simId}`;
+    const url = `${apiBase}/api/sim/${simId}/events`;
 
-    dispatch({ type: "ws", status: "connecting" });
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    dispatch({ type: "conn", status: "connecting" });
+    const source = new EventSource(url);
+    sourceRef.current = source;
 
-    ws.onopen = () => dispatch({ type: "ws", status: "open" });
-    ws.onclose = () => dispatch({ type: "ws", status: "closed" });
-    ws.onerror = () => dispatch({ type: "ws", status: "closed" });
-    ws.onmessage = (e) => {
+    source.onopen = () => dispatch({ type: "conn", status: "open" });
+    source.onerror = () => {
+      // EventSource fires onerror on transient disconnects too — only flip
+      // to "closed" once the browser has actually given up reconnecting.
+      if (source.readyState === EventSource.CLOSED) {
+        dispatch({ type: "conn", status: "closed" });
+      }
+    };
+    source.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as WorkerEvent;
         dispatch({ type: "event", event });
       } catch {
-        // ignore malformed
+        // ignore malformed lines (heartbeat comments don't reach onmessage)
       }
     };
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      source.close();
+      sourceRef.current = null;
     };
   }, [simId, opts.apiBase]);
 
